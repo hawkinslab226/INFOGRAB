@@ -7,7 +7,7 @@ required_packages <- c(
   "RColorBrewer", "gplots", "scales", "data.table", "gridExtra", 
   "plotly", "lubridate", "shinyjs", "shinydashboard", 
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
-  "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics"
+  "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", "igraph", "seriation", "GGally"
   )
 
 install_if_missing <- function(pkg) {
@@ -20,7 +20,11 @@ lapply(required_packages, install_if_missing)
 
 if (!require(DESeq2)) {
   BiocManager::install("DESeq2", force = TRUE)
-  }
+}
+
+if (!require(pcaExplorer)) {
+  BiocManager::install("pcaExplorer", force = TRUE)
+}
 
 lapply(required_packages, library, character.only = TRUE)
 
@@ -47,21 +51,27 @@ library(htmltools)
 library(scales)
 library(plotly)
 library(DESeq2)
+library(pcaExplorer)
 library(ggplotify)
 library(htmlwidgets)
 library(tools)
 library(grid)
 library(graphics)
+library(igraph)
+library(GGally)
 
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
 }
+
 if (!exists("RPKM_data")) {
   RPKM_data <- read.delim("data/logRPKM0625_filter.txt")
 }
+
 if (!exists("phenodata")) {
   phenodata <- read.csv("data/Pheno_data071523.csv")
 }
+
 if (!exists("cnt_data")) {
   cnt_data <- read.delim("data/all_cnt_0625.txt")
 }
@@ -94,6 +104,7 @@ mycolors1 <- c(
 # INFO GRAB
 
 # Cite BioRender
+# Cite pcaExplorer
 
 tissue_names <- unique(phenodata$Tissue)
 
@@ -192,10 +203,10 @@ ui <- navbarPage(
                  h2("INFO GRAB"),
                  h3("INteractive Functional Ontology Genomic Regulatory Element Analysis and Browsing"),
                  tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                 p("Welcome to INFO GRAB. This app allows you to perform differential expression analysis and 
+                 h5("Welcome to INFO GRAB. This app allows you to perform differential expression analysis and 
                    visualize the results through various plots and tables, looking at tissues in the chicken (Gallus gallus)."),
                  tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                 img(src = "chicken.png", id = "chicken-image", style = "width: 50%; max-width: 100%; height: auto;")
+                 img(src = "chicken.png", id = "chicken-image", style = "width: 40%; max-width: 100%; height: auto;")
              ),
              uiOutput("tissue_display")
            )
@@ -236,6 +247,24 @@ ui <- navbarPage(
                         )
                       )
              ),
+             
+             tabPanel("Correlation Plot",
+                      sidebarLayout(
+                        sidebarPanel(
+                          radioButtons("correlation_mode", "Select Mode:",
+                                       choices = c("Selected Tissues" = "selected", "Tissues by System" = "system"),
+                                       selected = "selected"),
+                          conditionalPanel(
+                            condition = "input.correlation_mode == 'system'",
+                            selectInput("correlation_system", "Select System:", choices = systems)
+                          )
+                        ),
+                        mainPanel(
+                          withLoader(plotOutput("correlation_plot", width = "90%", height = "750px"), type = "html", loader = "dnaspin")
+                        )
+                      )
+             ),
+             
              tabPanel("Volcano Plot",
                       sidebarLayout(
                         sidebarPanel(
@@ -301,6 +330,21 @@ ui <- navbarPage(
                         )
                       )
              ),
+             
+             tabPanel("PCA",
+                      sidebarLayout(
+                        sidebarPanel(),
+                        mainPanel()
+                      )),
+             
+             tabPanel("Boxplot",
+                      sidebarLayout(
+                        sidebarPanel(
+                          textInput("boxplot_searched_gene", "Search for genes (comma-separated)", width = '600px'),
+                        ),
+                        mainPanel()
+                      )),
+             
              tabPanel("Help",
                       mainPanel(
                         h2("Analysis"),
@@ -342,6 +386,22 @@ ui <- navbarPage(
 )
 
 server <- function(input, output, session) {
+  
+  if (!exists("comparison_results")) {
+    comparison_results <- readRDS("data/comparison_results.rds")
+  }
+  
+  if (!exists("RPKM_data")) {
+    RPKM_data <- read.delim("data/logRPKM0625_filter.txt")
+  }
+  
+  if (!exists("phenodata")) {
+    phenodata <- read.csv("data/Pheno_data071523.csv")
+  }
+  
+  if (!exists("cnt_data")) {
+    cnt_data <- read.delim("data/all_cnt_0625.txt")
+  }
   
   observeEvent(input$startAnalysis, {
     runjs('$("#progress-container").show();')
@@ -532,6 +592,7 @@ server <- function(input, output, session) {
   
   # Expressed genes counts
   expressed_genes_by_tissue <- reactive({
+    # May need to change (or make user able to modify)
     threshold <- 1  
     expressed_genes <- RPKM_data %>%
       rowwise() %>%
@@ -548,7 +609,6 @@ server <- function(input, output, session) {
   
   
   # Summary of data
-  
   output$summary_info <- renderUI({
     data <- filtered_data_combined()
     order <- order_val()
@@ -1098,6 +1158,76 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
+  
+  ### Correlation Plot
+  
+  # Use RPKM data
+  
+  # Either all tissues, selected tissues, or by system
+  
+  # Use pcaExplorer
+  
+  observe({
+    selected_samples <- NULL
+    
+    if (input$correlation_mode == "selected") {
+      selected_tissues <- c(input$tissue_select1, input$tissue_select2)
+      selected_samples <- phenodata %>%
+        filter(Tissue %in% selected_tissues) %>%
+        arrange(Tissue) %>%
+        pull(Sample_name2)
+    } else if (input$correlation_mode == "system") {
+      selected_system <- input$correlation_system
+      selected_tissues <- phenodata %>%
+        filter(System == selected_system) %>%
+        pull(Tissue) %>%
+        unique()
+      
+      selected_samples <- phenodata %>%
+        filter(Tissue %in% selected_tissues) %>%
+        arrange(Tissue) %>%
+        pull(Sample_name2)
+    }
+    
+    req(selected_samples)
+    
+    N <- 1000  # Number of top variable genes to select
+    gene_variability <- apply(RPKM_data, 1, var)
+    top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
+    
+    sample_names1 <- phenodata$Sample_name[match(selected_samples, phenodata$Sample_name2)]
+    selected_data <- RPKM_data[top_genes, sample_names1, drop = FALSE]
+    
+    colnames(selected_data) <- selected_samples
+    
+    sample_tissues <- phenodata$Tissue[match(selected_samples, phenodata$Sample_name2)]
+    sample_colors <- mycolors1[sample_tissues]
+    
+    if (ncol(selected_data) > 1) {
+      output$correlation_plot <- renderPlot({
+        pairs(selected_data, 
+              upper.panel = function(x, y) {
+                points(x, y)
+              },
+              lower.panel = function(x, y) {
+                points(x, y)
+              })
+      }, height = 800, width = 1200)
+    } else {
+      output$correlation_plot <- renderPlot({
+        plot.new()
+        text(0.5, 0.5, "Not enough data to compute correlations", cex = 1.5)
+      })
+    }
+  })
 }
+
+### PCA
+
+#Should be able to select colors and symbols
+
+### Boxplots
+
+# Search for gene
 
 shinyApp(ui = ui, server = server)
