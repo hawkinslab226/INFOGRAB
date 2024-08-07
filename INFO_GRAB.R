@@ -59,6 +59,7 @@ library(grid)
 library(graphics)
 library(igraph)
 library(GGally)
+library(gridExtra)
 
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
@@ -260,6 +261,7 @@ ui <- navbarPage(
                           )
                         ),
                         mainPanel(
+                          uiOutput("title_cor_plot"),
                           withLoader(plotOutput("correlation_plot", width = "90%", height = "750px"), type = "html", loader = "dnaspin")
                         )
                       )
@@ -1167,6 +1169,16 @@ server <- function(input, output, session) {
   
   # Use pcaExplorer
   
+  output$title_cor_plot <- renderUI({
+    req(input$tissue_select1, input$tissue_select2)
+    
+    if (input$correlation_mode == "selected") {
+      h3(paste("Correlation Plot:", input$tissue_select1, "and", input$tissue_select2))
+    } else if (input$correlation_mode == "system") {
+      h3(paste("Correlation Plot:", input$correlation_system, "system"))
+    }
+  })
+  
   observe({
     selected_samples <- NULL
     
@@ -1201,18 +1213,62 @@ server <- function(input, output, session) {
     colnames(selected_data) <- selected_samples
     
     sample_tissues <- phenodata$Tissue[match(selected_samples, phenodata$Sample_name2)]
-    sample_colors <- mycolors1[sample_tissues]
+    
+    create_diag <- function(data, mapping, ...) {
+      varname <- as_label(mapping$x)
+      tissue <- phenodata$Tissue[match(varname, phenodata$Sample_name2)]
+      color <- mycolors1[tissue]
+      ggplot(data = data, mapping = mapping) +
+        geom_density() +
+        theme_void() +
+        theme(
+          panel.background = element_rect(fill = color, colour = "black", size = 2),
+        )
+    }
+    
+    create_upper <- function(data, mapping, ...) {
+      ggally_cor(data = data, mapping = mapping, size = 6, color = "black") +
+        theme_minimal()
+    }
     
     if (ncol(selected_data) > 1) {
       output$correlation_plot <- renderPlot({
-        pairs(selected_data, 
-              upper.panel = function(x, y) {
-                points(x, y)
-              },
-              lower.panel = function(x, y) {
-                points(x, y)
-              })
-      }, height = 800, width = 1200)
+        p <- ggpairs(
+          data = as.data.frame(selected_data),
+          upper = list(continuous = create_upper),
+          diag = list(continuous = create_diag),
+          lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
+        ) +
+          theme(
+            legend.position = "none",
+            legend.box = "horizontal",
+            legend.box.just = "center",
+            legend.text = element_text(size = 14), 
+            legend.title = element_text(size = 16),
+            legend.background = element_rect(fill = "#f0f0f0", color = "black"),
+            legend.key = element_rect(fill = "white", color = "black"),
+            legend.key.size = unit(1.5, "lines")
+          )
+        
+        # Create legend data for only the present tissues
+        present_tissues <- unique(sample_tissues)
+        legend_data <- data.frame(Tissue = present_tissues, Color = mycolors1[present_tissues])
+        
+        legend <- ggplot(legend_data, aes(x = 1, y = Tissue)) +
+          geom_point(aes(color = Tissue), size = 5) +
+          geom_text(aes(label = Tissue), hjust = -0.5, vjust = 0.5, size = 5) +
+          scale_color_manual(values = mycolors1[present_tissues]) +
+          theme_void() +
+          theme(
+            legend.position = "none",
+            plot.margin = margin(0, 0, 0, 0, "pt")
+          )
+        
+        grid.newpage()
+        pushViewport(viewport(layout = grid.layout(1, 2, widths = unit(c(4, 1), "null"))))
+        print(p, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
+        print(legend, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
+      })
     } else {
       output$correlation_plot <- renderPlot({
         plot.new()
@@ -1220,14 +1276,15 @@ server <- function(input, output, session) {
       })
     }
   })
-}
-
+  
 ### PCA
 
-#Should be able to select colors and symbols
+# Should be able to select colors and symbols
 
 ### Boxplots
 
 # Search for gene
+  
+}
 
 shinyApp(ui = ui, server = server)
