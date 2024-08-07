@@ -1203,7 +1203,7 @@ server <- function(input, output, session) {
     
     req(selected_samples)
     
-    N <- 1000  # Number of top variable genes to select
+    N <- 1000
     gene_variability <- apply(RPKM_data, 1, var)
     top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
     
@@ -1226,9 +1226,33 @@ server <- function(input, output, session) {
         )
     }
     
+    custom_ggally_cor <- function(data, mapping, ...) {
+      x <- eval_data_col(data, mapping$x)
+      y <- eval_data_col(data, mapping$y)
+      cor_value <- cor(x, y, use = "complete.obs")
+      label <- format(cor_value, digits = 2)
+      
+      # Create a data frame for the tile
+      tile_data <- data.frame(cor_value = cor_value)
+      
+      print(tile_data)
+      
+      ggplot(data = tile_data) +
+        geom_tile(aes(x = 0.5, y = 0.5, fill = cor_value), width = -Inf, height = Inf, alpha = 1) +
+        geom_text(aes(x = 0.5, y = 0.5, label = label), size = 5, hjust = 0.5, vjust = 0.5) +
+        scale_fill_gradient(low = "white", high = "red", limits = c(0, 1), na.value = NA) +
+        theme_void() +
+        theme(legend.position = "none")
+    }
+    
+    # Use the custom correlation function in the upper plots
     create_upper <- function(data, mapping, ...) {
-      ggally_cor(data = data, mapping = mapping, size = 6, color = "black") +
-        theme_minimal()
+      custom_ggally_cor(data = data, mapping = mapping) +
+        theme_minimal() +
+        theme(
+          plot.title = element_blank(),
+          axis.title = element_blank()
+        )
     }
     
     if (ncol(selected_data) > 1) {
@@ -1250,7 +1274,6 @@ server <- function(input, output, session) {
             legend.key.size = unit(1.5, "lines")
           )
         
-        # Create legend data for only the present tissues
         present_tissues <- unique(sample_tissues)
         legend_data <- data.frame(Tissue = present_tissues, Color = mycolors1[present_tissues])
         
