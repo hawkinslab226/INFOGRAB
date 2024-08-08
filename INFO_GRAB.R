@@ -256,6 +256,10 @@ ui <- navbarPage(
                                        choices = c("Selected Tissues" = "selected", "Tissues by System" = "system"),
                                        selected = "selected"),
                           conditionalPanel(
+                            condition = "input.correlation_mode == 'selected'",
+                            checkboxInput("use_filtered_data", "Use Filtered Data", value = TRUE)
+                          ),
+                          conditionalPanel(
                             condition = "input.correlation_mode == 'system'",
                             selectInput("correlation_system", "Select System:", choices = systems)
                           )
@@ -332,20 +336,28 @@ ui <- navbarPage(
                         )
                       )
              ),
-             
+
              tabPanel("PCA",
                       sidebarLayout(
-                        sidebarPanel(),
-                        mainPanel()
-                      )),
-             
-             tabPanel("Boxplot",
-                      sidebarLayout(
                         sidebarPanel(
-                          textInput("boxplot_searched_gene", "Search for genes (comma-separated)", width = '600px'),
+                          radioButtons("pca_mode", "Select Mode:",
+                                       choices = c("Selected Tissues" = "selected", "Tissues by System" = "system", "All Tissues" = "all"),
+                                       selected = "selected"),
+                          conditionalPanel(
+                            condition = "input.pca_mode == 'system'",
+                            selectInput("pca_system_select", "Select System:", choices = unique(phenodata$System))
+                          ),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
                         ),
-                        mainPanel()
-                      )),
+                        mainPanel(
+                          uiOutput("title_pca_plot"),
+                          withLoader(plotOutput("pca_plot", height = "600px"), type = "html", loader = "dnaspin")
+                        )
+                      )
+             ),
+             
+             
+             
              
              tabPanel("Help",
                       mainPanel(
@@ -357,34 +369,72 @@ ui <- navbarPage(
                           tags$li(tags$b("FDR:"), " Choose the false discovery rate threshold for filtering the results."),
                           tags$li(tags$b("FC (log2 fold change):"), " Set the fold change threshold for filtering the results."),
                           tags$li(tags$b("Number of digits:"), " Specify the number of decimal places for displaying values."),
-                          tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
+                          tabPanel("Boxplot",
+                                   sidebarLayout(
+                                     sidebarPanel(
+                                       textInput("boxplot_searched_genes", "Search for genes (comma-separated)", width = '600px'),
+                                       actionButton("search_genes_boxplot", "Search"),
+                                       actionButton("clear_search_boxplot", "Clear"),
+                                       tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
+                                     ),
+                                     mainPanel(
+                                       uiOutput("title_boxplot"),
+                                       withLoader(plotOutput("boxplot_output", height = "800px"), type = "html", loader = "dnaspin")
+                                     )
+                                   )
+                          ),tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
                           tags$li(tags$b("Search for genes:"), " Enter genes to search in the results."),
-                          tags$li(tags$b("Search 10 Random Genes:"), " Display information for 10 randomly genes.")
+                          tags$li(tags$b("Search 10 Random Genes:"), " Display information for 10 randomly selected genes."),
+                          tags$li(tags$b("Clear:"), " Clear the gene search input.")
+                        ),
+                        h3("Correlation Plot"),
+                        p("The 'Correlation Plot' tab allows you to visualize the correlation between expression levels of genes across different tissues."),
+                        tags$ul(
+                          tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues' and 'Tissues by System'."),
+                          tags$li(tags$b("Use Filtered Data:"), " Option to use filtered data based on selected FDR and FC thresholds."),
+                          tags$li(tags$b("Select System:"), " Select a specific system to view correlation within that system.")
                         ),
                         h3("Volcano Plot"),
                         p("The 'Volcano Plot' tab allows you to visualize the results of the differential expression analysis."),
                         tags$ul(
                           tags$li(tags$b("Search for gene:"), " Enter a gene name to highlight it on the plot."),
                           tags$li(tags$b("Number of Labels:"), " Specify the number of top genes to label on the plot."),
+                          tags$li(tags$b("Background Color:"), " Choose the background color for the plot."),
                           tags$li(tags$b("Download PNG:"), " Download the volcano plot as a PNG file.")
                         ),
                         h3("Heatmap"),
                         p("The 'Heatmap' tab provides a heatmap visualization of the expression levels of genes."),
                         tags$ul(
-                          tags$li(tags$b("Sort by:"), " Choose to sort the genes by FDR or fold change. 
-                                  Based on the selection, the top genes that value will be displayed."),
+                          tags$li(tags$b("Sort by:"), " Choose to sort the genes by FDR or fold change."),
                           tags$li(tags$b("Number of Top Genes:"), " Select the number of top genes to include in the heatmap."),
                           tags$li(tags$b("Search for Specific Genes:"), " Enter gene names (comma-separated) to highlight on the heatmap."),
                           tags$li(tags$b("Select Color Scale:"), " Choose the color scale for the heatmap."),
                           tags$li(tags$b("Download PNG:"), " Download the heatmap as a PNG file.")
+                        ),
+                        h3("PCA"),
+                        p("The 'PCA' tab allows you to perform Principal Component Analysis on the selected tissues."),
+                        tags$ul(
+                          tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues', 'Tissues by System', and 'All Tissues'."),
+                          tags$li(tags$b("Select System:"), " Select a specific system for PCA analysis when 'Tissues by System' mode is selected.")
                         ),
                         h3("Parameters Explanation"),
                         tags$p("False Discovery Rate (FDR): The expected proportion of false discoveries among the rejected hypotheses."),
                         tags$p("Fold Change (FC): A measure describing how much a quantity changes between an original and a subsequent measurement.")
                       )
              )
+             
+           )
+  ),
+  tabPanel("About",
+           fluidPage(
+             h2("App Version and Credits"),
+             p("Version: 0.1.0"),
+             tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank"),
+             p("Developed by: Oliver Brown"),
            )
   )
+  
+  
 )
 
 server <- function(input, output, session) {
@@ -569,6 +619,7 @@ server <- function(input, output, session) {
     
     data <- filtered_data_fdr()
     req(data)
+    
     
     if (as.numeric(input$selected_fc) != 0) {
       data <- data %>% filter(abs(log2FoldChange) >= as.numeric(input$selected_fc))
@@ -1167,7 +1218,8 @@ server <- function(input, output, session) {
   
   # Either all tissues, selected tissues, or by system
   
-  # Use pcaExplorer
+  # Fix legend
+  
   
   output$title_cor_plot <- renderUI({
     req(input$tissue_select1, input$tissue_select2)
@@ -1180,6 +1232,7 @@ server <- function(input, output, session) {
   })
   
   observe({
+    
     selected_samples <- NULL
     
     if (input$correlation_mode == "selected") {
@@ -1208,7 +1261,19 @@ server <- function(input, output, session) {
     top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
     
     sample_names1 <- phenodata$Sample_name[match(selected_samples, phenodata$Sample_name2)]
-    selected_data <- RPKM_data[top_genes, sample_names1, drop = FALSE]
+    
+    if (input$use_filtered_data) {
+      filtered_genes <- rownames(filtered_data_combined())
+      filtered_RPKM <- RPKM_data[rownames(RPKM_data) %in% filtered_genes, , drop = FALSE]
+       } else {
+         filtered_RPKM <- RPKM_data
+         }
+    
+    # Filter the filtered_RPKM to include only the top variable genes
+    filtered_RPKM <- filtered_RPKM[rownames(filtered_RPKM) %in% top_genes, , drop = FALSE]
+    
+    # Subset filtered_RPKM for the selected samples
+    selected_data <- filtered_RPKM[, sample_names1, drop = FALSE]
     
     colnames(selected_data) <- selected_samples
     
@@ -1232,20 +1297,16 @@ server <- function(input, output, session) {
       cor_value <- cor(x, y, use = "complete.obs")
       label <- format(cor_value, digits = 2)
       
-      # Create a data frame for the tile
       tile_data <- data.frame(cor_value = cor_value)
-      
-      print(tile_data)
       
       ggplot(data = tile_data) +
         geom_tile(aes(x = 0.5, y = 0.5, fill = cor_value), width = -Inf, height = Inf, alpha = 1) +
-        geom_text(aes(x = 0.5, y = 0.5, label = label), size = 5, hjust = 0.5, vjust = 0.5) +
-        scale_fill_gradient(low = "white", high = "red", limits = c(0, 1), na.value = NA) +
+        geom_text(aes(x = 0.5, y = 0.5, label = label), size = 6, hjust = 0.5, vjust = 0.5) +
+        scale_fill_gradient2(low = "blue", mid = "white", high = "firebrick3", limits = c(-1, 1), na.value = NA) +
         theme_void() +
         theme(legend.position = "none")
     }
     
-    # Use the custom correlation function in the upper plots
     create_upper <- function(data, mapping, ...) {
       custom_ggally_cor(data = data, mapping = mapping) +
         theme_minimal() +
@@ -1292,21 +1353,152 @@ server <- function(input, output, session) {
         print(p, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
         print(legend, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
       })
-    } else {
-      output$correlation_plot <- renderPlot({
-        plot.new()
-        text(0.5, 0.5, "Not enough data to compute correlations", cex = 1.5)
-      })
     }
   })
   
 ### PCA
+  
+  output$title_pca_plot <- renderUI({
+    req(input$tissue_select1, input$tissue_select2)
+    
+    if (input$pca_mode == "selected") {
+      h3(paste("PCA:", input$tissue_select1, "and", input$tissue_select2))
+    } else if (input$pca_mode == "system") {
+      h3(paste("PCA:", input$pca_system_select, "System"))
+    }
+    else if (input$pca_mode == "all") {
+      h3(paste("PCA: All Tissues"))
+    }
+  })
+
+  observe({
+    selected_samples <- NULL
+    
+    if (input$pca_mode == "selected") {
+      selected_tissues <- c(input$tissue_select1, input$tissue_select2)
+      selected_samples <- phenodata %>%
+        filter(Tissue %in% selected_tissues) %>%
+        arrange(Tissue) %>%
+        pull(Sample_name2)
+      
+    } else if (input$pca_mode == "system") {
+      selected_system <- input$pca_system_select
+      selected_tissues <- phenodata %>%
+        filter(System == selected_system) %>%
+        pull(Tissue) %>%
+        unique()
+      
+      selected_samples <- phenodata %>%
+        filter(Tissue %in% selected_tissues) %>%
+        arrange(Tissue) %>%
+        pull(Sample_name2)
+      
+    } else if (input$pca_mode == "all") {
+      selected_samples <- phenodata %>%
+        pull(Sample_name2)
+    }
+    
+    req(selected_samples)
+    
+    N <- 1000
+    gene_variability <- apply(RPKM_data, 1, var)
+    top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
+    
+    sample_names1 <- phenodata$Sample_name[match(selected_samples, phenodata$Sample_name2)]
+    
+    filtered_RPKM <- RPKM_data[rownames(RPKM_data) %in% top_genes, , drop = FALSE]
+    
+    selected_data <- filtered_RPKM[, sample_names1, drop = FALSE]
+    
+    
+    colnames(selected_data) <- selected_samples
+    
+    sample_tissues <- phenodata$Tissue[match(selected_samples, phenodata$Sample_name2)]
+    
+    output$pca_plot <- renderPlot({
+      
+      pca_data <- prcomp(t(selected_data), scale. = F)
+      pca_df <- as.data.frame(pca_data$x)
+      pca_df$Sample <- rownames(pca_df)
+      pca_df <- merge(pca_df, phenodata, by.x = "Sample", by.y = "Sample_name2")
+      
+      if (input$pca_mode == "system") {
+        ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue)) +
+          geom_point(size = 4) +
+          scale_color_manual(values = mycolors1) +
+          labs(title = "PCA of Selected Samples", x = "Principal Component 1", y = "Principal Component 2") +
+          theme_minimal() +
+          theme(text = element_text(family = "Sen"))
+      }
+      
+      else {
+        ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue, shape = System)) +
+          geom_point(size = 4) +
+          scale_color_manual(values = mycolors1) +
+          labs(x = "Principal Component 1", y = "Principal Component 2") +
+          theme_minimal() +
+          theme(text = element_text(family = "Sen"))
+      }
+      
+    })
+  })
+  
+  
+  
+  
+  
 
 # Should be able to select colors and symbols
 
 ### Boxplots
 
 # Search for gene
+
+  
+  boxplot_data <- reactiveVal(NULL)
+  
+  observeEvent(input$search_gene_boxplot, {
+    req(input$boxplot_searched_gene)
+    
+    searched_genes <- strsplit(input$boxplot_searched_gene, ",\\s*")[[1]]
+    searched_genes <- toupper(searched_genes)
+    
+    found_genes <- intersect(rownames(RPKM_data), searched_genes)
+    
+    if (length(found_genes) == 0) {
+      showNotification("No genes found.", type = "warning")
+      boxplot_data(NULL)
+      return(NULL)
+    }
+    
+    selected_data <- RPKM_data[found_genes, , drop = FALSE]
+    melted_data <- reshape2::melt(selected_data)
+    colnames(melted_data) <- c("Gene", "Sample", "Expression")
+    
+    tissue_info <- phenodata[match(melted_data$Sample, phenodata$Sample_name), "Tissue"]
+    melted_data$Tissue <- tissue_info
+    
+    boxplot_data(melted_data)
+  })
+  
+  observeEvent(input$clear_search_gene_boxplot, {
+    updateTextInput(session, "boxplot_searched_gene", value = "")
+    boxplot_data(NULL)
+  })
+  
+  output$boxplot_plot <- renderPlot({
+    data <- boxplot_data()
+    req(data)
+    
+    ggplot(data, aes(x = Tissue, y = Expression, fill = Gene)) +
+      geom_boxplot() +
+      facet_wrap(~ Gene, scales = "free_y") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  outputOptions(output, "boxplot_plot", suspendWhenHidden = FALSE)
+  
   
 }
 
