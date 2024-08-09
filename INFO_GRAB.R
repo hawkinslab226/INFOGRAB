@@ -428,7 +428,7 @@ ui <- navbarPage(
   tabPanel("About",
            fluidPage(
              h2("App Version and Credits"),
-             p("Version: 0.1.0"),
+             p("Version: 1.0.0"),
              tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank"),
              p("Developed by: Oliver Brown"),
            )
@@ -1421,24 +1421,27 @@ server <- function(input, output, session) {
       pca_df <- as.data.frame(pca_data$x)
       pca_df$Sample <- rownames(pca_df)
       pca_df <- merge(pca_df, phenodata, by.x = "Sample", by.y = "Sample_name2")
+    
+      
       
       if (input$pca_mode == "system") {
         ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue)) +
           geom_point(size = 4) +
+          geom_polygon(data = pca_df, aes(x = PC1, y = PC2, group = Tissue, fill = Tissue), alpha = 0.2) +
           scale_color_manual(values = mycolors1) +
           labs(title = "PCA of Selected Samples", x = "Principal Component 1", y = "Principal Component 2") +
           theme_minimal() +
           theme(text = element_text(family = "Sen"))
-      }
-      
-      else {
+      } else {
         ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue, shape = System)) +
           geom_point(size = 4) +
+          geom_polygon(data = pca_df, aes(x = PC1, y = PC2, group = Tissue, fill = Tissue), alpha = 0.2) +
           scale_color_manual(values = mycolors1) +
           labs(x = "Principal Component 1", y = "Principal Component 2") +
           theme_minimal() +
           theme(text = element_text(family = "Sen"))
       }
+      
       
     })
   })
@@ -1498,6 +1501,9 @@ server <- function(input, output, session) {
   })
   
   outputOptions(output, "boxplot_plot", suspendWhenHidden = FALSE)
+  
+  
+  
   
   
 }
