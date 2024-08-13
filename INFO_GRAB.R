@@ -231,7 +231,8 @@ ui <- navbarPage(
                           downloadButton("download_DEA_data", "Download CSV"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("FDR: The expected proportion of false discoveries among the rejected hypotheses."),
-                          tags$p("FC: A measure describing how much a quantity changes between an original and a subsequent measurement.")
+                          tags$p("FC: A measure describing how much a quantity changes between an original and a subsequent measurement."),
+                          uiOutput("fold_change_equation")
                         ),
                         mainPanel(
                           uiOutput("title"),
@@ -262,7 +263,9 @@ ui <- navbarPage(
                           conditionalPanel(
                             condition = "input.correlation_mode == 'system'",
                             selectInput("correlation_system", "Select System:", choices = systems)
-                          )
+                          ),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          downloadButton("download_correlation_plot", "Download Correlation Plot")
                         ),
                         mainPanel(
                           uiOutput("title_cor_plot"),
@@ -278,7 +281,23 @@ ui <- navbarPage(
                           actionButton("search_gene_volcano", "Search"),
                           actionButton("clear_search_gene_volcano", "Clear"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          sliderInput("n_labels", "Number of Labels", min = 0, max = 100, value = 10),
+                          
+                          # Labeling options
+                          radioButtons("labeling_option", "Labeling Options:",
+                                       choices = list("Basic labels" = "basic", "Advanced labels" = "advanced"),
+                                       selected = "basic"),
+
+                          conditionalPanel(
+                            condition = "input.labeling_option == 'basic'",
+                            sliderInput("n_labels", "Number of Labels", min = 0, max = 100, value = 10)
+                          ),
+                          
+                          conditionalPanel(
+                            condition = "input.labeling_option == 'advanced'",
+                            sliderInput("n_labels_left", "Number of Labels (Left)", min = 0, max = 50, value = 5),
+                            sliderInput("n_labels_right", "Number of Labels (Right)", min = 0, max = 50, value = 5)
+                          ),
+                          
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           selectInput("volcano_background_col", "Background Color", 
                                       choices = c("White" = "White","Grey" = "Grey"), selected = "White"),
@@ -286,12 +305,13 @@ ui <- navbarPage(
                           downloadButton("download_volcano_plot", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("Each point represents a gene, plotted by its log2 fold change and the negative 
-                                 logarithm of its adjusted p-value. Genes with significant changes (high fold change 
+                          logarithm of its adjusted p-value. Genes with significant changes (high fold change 
                                  and low p-value) are highlighted."),
                           br(),
-                          tags$p("Genes farthest from the origin along the x-axis (log2 fold change) have the most 
-                                 significant changes in expression. The y-axis shows the significance level, with points 
-                                 higher up indicating more significant changes.")
+                          tags$p("Genes with the largest log2 fold changes (farthest from the center on the x-axis) 
+                                 show the most substantial differences in expression between the two tissues. 
+                                 The y-axis represents the significance level, with higher points indicating more 
+                                 statistically significant changes.")
                         ),
                         mainPanel(
                           uiOutput("title_volcano_plot"),
@@ -347,7 +367,8 @@ ui <- navbarPage(
                             condition = "input.pca_mode == 'system'",
                             selectInput("pca_system_select", "Select System:", choices = unique(phenodata$System))
                           ),
-                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          downloadButton("download_pca_plot", "Download PCA Plot")
                         ),
                         mainPanel(
                           uiOutput("title_pca_plot"),
@@ -356,12 +377,26 @@ ui <- navbarPage(
                       )
              ),
              
-             
-             
+             tabPanel("Gene Expression Chart",
+                      sidebarLayout(
+                        sidebarPanel(
+                          textInput("barplot_searched_gene", "Search for genes (comma-separated)", width = '600px'),
+                          actionButton("search_gene_barplot", "Search"),
+                          actionButton("random_gene_barplot", "Search 5 Random Genes"),
+                          actionButton("clear_search_gene_barplot", "Clear"),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          downloadButton("download_barplot", "Download PNG")
+                        ),
+                        mainPanel(
+                          uiOutput("dynamic_barplot_output")
+                        )
+                      )
+             ),
              
              tabPanel("Help",
                       mainPanel(
                         h2("Analysis"),
+                        
                         h3("Home"),
                         p("In the 'Home' tab, you can select two tissues to compare and adjust the analysis parameters."),
                         tags$ul(
@@ -369,62 +404,73 @@ ui <- navbarPage(
                           tags$li(tags$b("FDR:"), " Choose the false discovery rate threshold for filtering the results."),
                           tags$li(tags$b("FC (log2 fold change):"), " Set the fold change threshold for filtering the results."),
                           tags$li(tags$b("Number of digits:"), " Specify the number of decimal places for displaying values."),
-                          tabPanel("Boxplot",
-                                   sidebarLayout(
-                                     sidebarPanel(
-                                       textInput("boxplot_searched_genes", "Search for genes (comma-separated)", width = '600px'),
-                                       actionButton("search_genes_boxplot", "Search"),
-                                       actionButton("clear_search_boxplot", "Clear"),
-                                       tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
-                                     ),
-                                     mainPanel(
-                                       uiOutput("title_boxplot"),
-                                       withLoader(plotOutput("boxplot_output", height = "800px"), type = "html", loader = "dnaspin")
-                                     )
-                                   )
-                          ),tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
+                          tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
                           tags$li(tags$b("Search for genes:"), " Enter genes to search in the results."),
                           tags$li(tags$b("Search 10 Random Genes:"), " Display information for 10 randomly selected genes."),
-                          tags$li(tags$b("Clear:"), " Clear the gene search input.")
+                          tags$li(tags$b("Clear:"), " Clear the gene search input."),
+                          tags$li(tags$b("Fold Change Equation:"), " Displays the log2 fold change equation for the selected tissues.")
                         ),
+                        
                         h3("Correlation Plot"),
                         p("The 'Correlation Plot' tab allows you to visualize the correlation between expression levels of genes across different tissues."),
                         tags$ul(
                           tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues' and 'Tissues by System'."),
                           tags$li(tags$b("Use Filtered Data:"), " Option to use filtered data based on selected FDR and FC thresholds."),
-                          tags$li(tags$b("Select System:"), " Select a specific system to view correlation within that system.")
+                          tags$li(tags$b("Select System:"), " Select a specific system to view correlation within that system."),
+                          tags$li(tags$b("Correlation Plot Legend:"), " The plot includes a legend that matches the tissue colors with their corresponding tissues.")
                         ),
+                        
                         h3("Volcano Plot"),
                         p("The 'Volcano Plot' tab allows you to visualize the results of the differential expression analysis."),
                         tags$ul(
                           tags$li(tags$b("Search for gene:"), " Enter a gene name to highlight it on the plot."),
-                          tags$li(tags$b("Number of Labels:"), " Specify the number of top genes to label on the plot."),
+                          tags$li(tags$b("Labeling Options:"), " Choose between basic or advanced labeling options for the plot."),
                           tags$li(tags$b("Background Color:"), " Choose the background color for the plot."),
-                          tags$li(tags$b("Download PNG:"), " Download the volcano plot as a PNG file.")
+                          tags$li(tags$b("Download PNG:"), " Download the volcano plot as a PNG file."),
+                          tags$li(tags$b("Advanced Labeling Options:"), " Allows the user to specify the number of labels on each side of the volcano plot separately.")
                         ),
+                        
                         h3("Heatmap"),
                         p("The 'Heatmap' tab provides a heatmap visualization of the expression levels of genes."),
                         tags$ul(
                           tags$li(tags$b("Sort by:"), " Choose to sort the genes by FDR or fold change."),
                           tags$li(tags$b("Number of Top Genes:"), " Select the number of top genes to include in the heatmap."),
                           tags$li(tags$b("Search for Specific Genes:"), " Enter gene names (comma-separated) to highlight on the heatmap."),
+                          tags$li(tags$b("Random Gene Search:"), " Search for 10 random genes and highlight them on the heatmap."),
                           tags$li(tags$b("Select Color Scale:"), " Choose the color scale for the heatmap."),
                           tags$li(tags$b("Download PNG:"), " Download the heatmap as a PNG file.")
                         ),
+                        
                         h3("PCA"),
                         p("The 'PCA' tab allows you to perform Principal Component Analysis on the selected tissues."),
                         tags$ul(
                           tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues', 'Tissues by System', and 'All Tissues'."),
-                          tags$li(tags$b("Select System:"), " Select a specific system for PCA analysis when 'Tissues by System' mode is selected.")
+                          tags$li(tags$b("Select System:"), " Select a specific system for PCA analysis when 'Tissues by System' mode is selected."),
+                          tags$li(tags$b("Download PCA Plot:"), " Download the PCA plot as a PNG file.")
                         ),
+                        
+                        h3("Gene Expression Chart"),
+                        p("The 'Gene Expression Chart' tab allows you to visualize the average expression levels of selected genes across different tissues."),
+                        tags$ul(
+                          tags$li(tags$b("Search for genes:"), " Enter genes (comma-separated) to create bar charts of their average expression levels."),
+                          tags$li(tags$b("Search 5 Random Genes:"), " Display bar charts for 5 randomly selected genes."),
+                          tags$li(tags$b("Clear:"), " Clear the gene search input."),
+                          tags$li(tags$b("Download Barplot:"), " Download the bar charts as a PNG file.")
+                        ),
+                        
                         h3("Parameters Explanation"),
                         tags$p("False Discovery Rate (FDR): The expected proportion of false discoveries among the rejected hypotheses."),
                         tags$p("Fold Change (FC): A measure describing how much a quantity changes between an original and a subsequent measurement.")
                       )
              )
              
+             
            )
   ),
+  
+  #tabPanel("Tissue-specific Analysis",
+  #),
+  
   tabPanel("About",
            fluidPage(
              h2("App Version and Credits"),
@@ -538,7 +584,7 @@ server <- function(input, output, session) {
                 "Samples: ", paste(samples_display, collapse = ", "), "<br><hr>",
                 "Total Expressed Genes: ", expressed_genes_count, "<br><hr>",
                 "Top 5 Most Expressed Genes (RPKM):<br>",
-                paste(top_genes$Gene, ": ", round(top_genes$Expression_Sum, 2), sep = "", collapse = "<br>")
+                paste(top_genes$Gene, sep = "", collapse = "<br>")
               )
             ),
             easyClose = TRUE,
@@ -634,11 +680,11 @@ server <- function(input, output, session) {
     order <- order_val()
     
     if (order == 0) {
-      return(h3(paste(input$tissue_select1, " (+) vs. ", input$tissue_select2, " (-)", sep = "")))
+      return(h3(paste(input$tissue_select1, " vs. ", input$tissue_select2, sep = "")))
     }
     
     if (order == 1) {
-      return(h3(paste(input$tissue_select2, " (+) vs. ", input$tissue_select1, " (-)", sep = "")))
+      return(h3(paste(input$tissue_select2, " vs. ", input$tissue_select1, sep = "")))
     }
     
   })
@@ -659,6 +705,20 @@ server <- function(input, output, session) {
     
     tissue_counts
   })
+  
+  output$fold_change_equation <- renderUI({
+    req(input$tissue_select1, input$tissue_select2)
+    order <- order_val()
+    
+    if (order == 0) {
+      equation <- paste0("<b>log<sub>2</sub> fold change = log<sub>2</sub>(", input$tissue_select1, "/", input$tissue_select2, ")</b>")
+    } else {
+      equation <- paste0("<b>log<sub>2</sub> fold change = log<sub>2</sub>(", input$tissue_select2, "/", input$tissue_select1, ")</b>")
+    }
+    
+    HTML(equation)
+  })
+  
   
   
   # Summary of data
@@ -968,10 +1028,24 @@ server <- function(input, output, session) {
       label_2 <- input$tissue_select1
     }
     
-    top_genes <- data %>%
-      filter((is.na(selected_fdr) | padj < selected_fdr) & abs(log2FoldChange) >= selected_fc) %>%
-      arrange(padj) %>%
-      head(input$n_labels)
+    if (input$labeling_option == "basic") {
+      top_genes <- data %>%
+        filter((is.na(selected_fdr) | padj < selected_fdr) & abs(log2FoldChange) >= selected_fc) %>%
+        arrange(padj) %>%
+        head(input$n_labels)
+    } else {
+      top_genes_left <- data %>%
+        filter(log2FoldChange < -selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
+        arrange(padj) %>%
+        head(input$n_labels_left)
+      
+      top_genes_right <- data %>%
+        filter(log2FoldChange > selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
+        arrange(padj) %>%
+        head(input$n_labels_right)
+      
+      top_genes <- bind_rows(top_genes_left, top_genes_right)
+    }
     
     if (input$volcano_background_col == "White") {
       background <- element_blank()
@@ -1050,6 +1124,7 @@ server <- function(input, output, session) {
     return(p)
   }
   
+  
   output$volcano_plot <- renderPlot({
     data <- unfiltered_data()
     req(data)
@@ -1085,8 +1160,8 @@ server <- function(input, output, session) {
     searched_genes <- strsplit(input$search_genes_heatmap, ",\\s*")[[1]]
     
     if (length(searched_genes) > 0) {
-      gene_data <- data %>% filter(Gene %in% searched_genes)
-      not_found_genes <- setdiff(searched_genes, gene_data$Gene)
+      gene_data <- data %>% filter(toupper(Gene) %in% toupper(searched_genes))
+      not_found_genes <- setdiff(toupper(searched_genes), toupper(gene_data$Gene))
       
       if (length(not_found_genes) > 0) {
         showNotification(paste("The following genes were not found:", paste(not_found_genes, collapse = ", ")), type = "warning")
@@ -1169,7 +1244,7 @@ server <- function(input, output, session) {
     heatmap <- pheatmap(
       rpkm_filtered, 
       scale = "row",
-      cluster_rows = TRUE, 
+      cluster_rows = (n_genes > 1), 
       cluster_cols = TRUE, 
       show_rownames = show_rownames, 
       show_colnames = TRUE,
@@ -1177,7 +1252,7 @@ server <- function(input, output, session) {
       annotation_colors = annotation_colors,
       color = colorRampPalette(color_scale)(100),
       cutree_cols = 2,
-      cutree_rows = 2,
+      cutree_rows = if (n_genes > 1) 2 else 1,
       angle_col = 45,
       fontsize = 13,
       fontsize_col = 14,
@@ -1212,6 +1287,8 @@ server <- function(input, output, session) {
     }
   )
   
+  
+  
   ### Correlation Plot
   
   # Use RPKM data
@@ -1219,7 +1296,6 @@ server <- function(input, output, session) {
   # Either all tissues, selected tissues, or by system
   
   # Fix legend
-  
   
   output$title_cor_plot <- renderUI({
     req(input$tissue_select1, input$tissue_select2)
@@ -1265,14 +1341,12 @@ server <- function(input, output, session) {
     if (input$use_filtered_data) {
       filtered_genes <- rownames(filtered_data_combined())
       filtered_RPKM <- RPKM_data[rownames(RPKM_data) %in% filtered_genes, , drop = FALSE]
-       } else {
-         filtered_RPKM <- RPKM_data
-         }
+    } else {
+      filtered_RPKM <- RPKM_data
+    }
     
-    # Filter the filtered_RPKM to include only the top variable genes
     filtered_RPKM <- filtered_RPKM[rownames(filtered_RPKM) %in% top_genes, , drop = FALSE]
     
-    # Subset filtered_RPKM for the selected samples
     selected_data <- filtered_RPKM[, sample_names1, drop = FALSE]
     
     colnames(selected_data) <- selected_samples
@@ -1287,7 +1361,7 @@ server <- function(input, output, session) {
         geom_density() +
         theme_void() +
         theme(
-          panel.background = element_rect(fill = color, colour = "black", size = 2),
+          panel.background = element_rect(fill = color, colour = "black", size = 2)
         )
     }
     
@@ -1301,7 +1375,7 @@ server <- function(input, output, session) {
       
       ggplot(data = tile_data) +
         geom_tile(aes(x = 0.5, y = 0.5, fill = cor_value), width = -Inf, height = Inf, alpha = 1) +
-        geom_text(aes(x = 0.5, y = 0.5, label = label), size = 6, hjust = 0.5, vjust = 0.5) +
+        geom_text(aes(x = 0.5, y = 0.5, label = label), size = 5.5, hjust = 0.5, vjust = 0.5) +
         scale_fill_gradient2(low = "blue", mid = "white", high = "firebrick3", limits = c(-1, 1), na.value = NA) +
         theme_void() +
         theme(legend.position = "none")
@@ -1316,31 +1390,36 @@ server <- function(input, output, session) {
         )
     }
     
+    # Store the plot object in a reactive value
+    correlation_plot <- reactive({
+      ggpairs(
+        data = as.data.frame(selected_data),
+        upper = list(continuous = create_upper),
+        diag = list(continuous = create_diag),
+        lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
+      ) +
+        theme(
+          legend.position = "none",
+          legend.box = "horizontal",
+          legend.box.just = "center",
+          legend.text = element_text(size = 14), 
+          legend.title = element_text(size = 16),
+          legend.background = element_rect(fill = "#f0f0f0", color = "black"),
+          legend.key = element_rect(fill = "white", color = "black"),
+          legend.key.size = unit(1.5, "lines")
+        )
+    })
+    
     if (ncol(selected_data) > 1) {
       output$correlation_plot <- renderPlot({
-        p <- ggpairs(
-          data = as.data.frame(selected_data),
-          upper = list(continuous = create_upper),
-          diag = list(continuous = create_diag),
-          lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
-        ) +
-          theme(
-            legend.position = "none",
-            legend.box = "horizontal",
-            legend.box.just = "center",
-            legend.text = element_text(size = 14), 
-            legend.title = element_text(size = 16),
-            legend.background = element_rect(fill = "#f0f0f0", color = "black"),
-            legend.key = element_rect(fill = "white", color = "black"),
-            legend.key.size = unit(1.5, "lines")
-          )
+        p <- correlation_plot()
         
         present_tissues <- unique(sample_tissues)
         legend_data <- data.frame(Tissue = present_tissues, Color = mycolors1[present_tissues])
         
         legend <- ggplot(legend_data, aes(x = 1, y = Tissue)) +
           geom_point(aes(color = Tissue), size = 5) +
-          geom_text(aes(label = Tissue), hjust = -0.5, vjust = 0.5, size = 5) +
+          geom_text(aes(label = Tissue), hjust = -0.5, vjust = 0.5, size = 5, lineheight = 0.8) + 
           scale_color_manual(values = mycolors1[present_tissues]) +
           theme_void() +
           theme(
@@ -1353,8 +1432,18 @@ server <- function(input, output, session) {
         print(p, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
         print(legend, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
       })
+      
+      output$download_correlation_plot <- downloadHandler(
+        filename = function() {
+          paste("Correlation", ".png", sep = "")
+        },
+        content = function(file) {
+          ggsave(file, plot = correlation_plot(), device = "png", width = 14, height = 10)
+        }
+      )
     }
   })
+  
   
 ### PCA
   
@@ -1370,7 +1459,7 @@ server <- function(input, output, session) {
       h3(paste("PCA: All Tissues"))
     }
   })
-
+  
   observe({
     selected_samples <- NULL
     
@@ -1410,7 +1499,6 @@ server <- function(input, output, session) {
     
     selected_data <- filtered_RPKM[, sample_names1, drop = FALSE]
     
-    
     colnames(selected_data) <- selected_samples
     
     sample_tissues <- phenodata$Tissue[match(selected_samples, phenodata$Sample_name2)]
@@ -1421,28 +1509,24 @@ server <- function(input, output, session) {
       pca_df <- as.data.frame(pca_data$x)
       pca_df$Sample <- rownames(pca_df)
       pca_df <- merge(pca_df, phenodata, by.x = "Sample", by.y = "Sample_name2")
-    
       
+      ggplot_pca <- ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue, shape = System)) +
+        geom_point(size = 4) +
+        geom_polygon(data = pca_df, aes(x = PC1, y = PC2, group = Tissue, fill = Tissue), alpha = 0.2) +
+        scale_color_manual(values = mycolors1) +
+        labs(x = "Principal Component 1", y = "Principal Component 2") +
+        theme_minimal()
       
-      if (input$pca_mode == "system") {
-        ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue)) +
-          geom_point(size = 4) +
-          geom_polygon(data = pca_df, aes(x = PC1, y = PC2, group = Tissue, fill = Tissue), alpha = 0.2) +
-          scale_color_manual(values = mycolors1) +
-          labs(title = "PCA of Selected Samples", x = "Principal Component 1", y = "Principal Component 2") +
-          theme_minimal() +
-          theme(text = element_text(family = "Sen"))
-      } else {
-        ggplot(pca_df, aes(x = PC1, y = PC2, color = Tissue, shape = System)) +
-          geom_point(size = 4) +
-          geom_polygon(data = pca_df, aes(x = PC1, y = PC2, group = Tissue, fill = Tissue), alpha = 0.2) +
-          scale_color_manual(values = mycolors1) +
-          labs(x = "Principal Component 1", y = "Principal Component 2") +
-          theme_minimal() +
-          theme(text = element_text(family = "Sen"))
-      }
+      print(ggplot_pca)
       
-      
+      output$download_pca_plot <- downloadHandler(
+        filename = function() {
+          paste("PCA", ".png", sep = "")
+        },
+        content = function(file) {
+          ggsave(file, plot = ggplot_pca, device = "png", width = 10, height = 8, bg = "white")
+        }
+      )
     })
   })
   
@@ -1453,58 +1537,103 @@ server <- function(input, output, session) {
 
 # Should be able to select colors and symbols
 
-### Boxplots
+### barplots
 
 # Search for gene
+  
+  # Change to barplots
 
   
-  boxplot_data <- reactiveVal(NULL)
+  barplot_data <- reactiveVal(NULL)
   
-  observeEvent(input$search_gene_boxplot, {
-    req(input$boxplot_searched_gene)
+  # Reactive value to store the plot
+  current_plot <- reactiveVal(NULL)
+  
+  observeEvent(input$search_gene_barplot, {
+    req(input$barplot_searched_gene)
     
-    searched_genes <- strsplit(input$boxplot_searched_gene, ",\\s*")[[1]]
+    searched_genes <- strsplit(input$barplot_searched_gene, ",\\s*")[[1]]
     searched_genes <- toupper(searched_genes)
     
-    found_genes <- intersect(rownames(RPKM_data), searched_genes)
+    found_genes <- intersect(toupper(rownames(RPKM_data)), searched_genes)
     
     if (length(found_genes) == 0) {
       showNotification("No genes found.", type = "warning")
-      boxplot_data(NULL)
+      barplot_data(NULL)
+      current_plot(NULL)
       return(NULL)
     }
     
-    selected_data <- RPKM_data[found_genes, , drop = FALSE]
-    melted_data <- reshape2::melt(selected_data)
-    colnames(melted_data) <- c("Gene", "Sample", "Expression")
+    updateBarplotData(found_genes)
+  })
+  
+  observeEvent(input$random_gene_barplot, {
+    random_genes <- sample(rownames(RPKM_data), 5)
+    updateTextInput(session, "barplot_searched_gene", value = paste(random_genes, collapse = ", "))
+    updateBarplotData(random_genes)
+  })
+  
+  observeEvent(input$clear_search_gene_barplot, {
+    updateTextInput(session, "barplot_searched_gene", value = "")
+    barplot_data(NULL)
+    current_plot(NULL)
+    output$dynamic_barplot_output <- renderUI({
+      NULL  # Remove the plot output when clearing the search
+    })
+  })
+  
+  updateBarplotData <- function(genes) {
+    selected_data <- RPKM_data[genes, , drop = FALSE]
+    selected_data$Gene <- rownames(selected_data)
     
-    tissue_info <- phenodata[match(melted_data$Sample, phenodata$Sample_name), "Tissue"]
+    melted_data <- reshape2::melt(selected_data)
+    tissue_info <- phenodata[match(melted_data$variable, phenodata$Sample_name), "Tissue"]
     melted_data$Tissue <- tissue_info
     
-    boxplot_data(melted_data)
-  })
-  
-  observeEvent(input$clear_search_gene_boxplot, {
-    updateTextInput(session, "boxplot_searched_gene", value = "")
-    boxplot_data(NULL)
-  })
-  
-  output$boxplot_plot <- renderPlot({
-    data <- boxplot_data()
-    req(data)
+    average_expression_per_tissue <- melted_data %>%
+      group_by(Gene, Tissue) %>%
+      summarize(average_value = mean(value), .groups = 'drop') %>%
+      ungroup()
     
-    ggplot(data, aes(x = Tissue, y = Expression, fill = Gene)) +
-      geom_boxplot() +
-      facet_wrap(~ Gene, scales = "free_y") +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  })
+    barplot_data(average_expression_per_tissue)
+    
+    output$dynamic_barplot_output <- renderUI({
+      plot_height <- 300 + 300 * length(genes)
+      plotOutput("barplot_plot", height = paste0(plot_height, "px"))
+    })
+    
+    output$barplot_plot <- renderPlot({
+      p <- ggplot(average_expression_per_tissue, aes(x = Tissue, y = average_value, fill = Tissue)) +
+        geom_bar(stat = "identity", color = "black", width = 0.7) + 
+        facet_wrap(~ Gene, scales = "free", ncol = 1) +
+        theme_minimal() +
+        theme(
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.spacing = unit(0.5, "lines"), 
+          panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+          strip.background = element_blank(),
+          strip.placement = "outside",
+          panel.background = element_blank(),
+          legend.position = "none"
+        ) +
+        scale_fill_manual(values = mycolors1) +
+        labs(y = "Average Expression (Avg. RPKM)", x = "Tissue")
+      
+      current_plot(p)  # Store the plot in the reactive value
+      print(p)  # Render the plot in the UI
+    })
+  }
   
-  outputOptions(output, "boxplot_plot", suspendWhenHidden = FALSE)
+  output$download_barplot <- downloadHandler(
+    filename = function() {
+      paste("Barplot", ".png", sep = "")
+    },
+    content = function(file) {
+      ggsave(file, plot = current_plot(), device = "png", width = 10, height = length(barplot_data()) * 4, bg = "white")
+    }
+  )
   
-  
-  
-  
+  # Tissue specific analysis
   
 }
 
