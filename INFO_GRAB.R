@@ -2,12 +2,14 @@
 #setwd("~/Documents/Internship/InfoGrab")
 
 required_packages <- c(
-  "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", "ggplot2", "pheatmap", "dplyr", "readr", "readxl", 
+  "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
+  "ggplot2", "pheatmap", "dplyr", "readr", "readxl", 
   "pheatmap", "DT", "stringr", "purrr", "tibble", "reshape2", 
   "RColorBrewer", "gplots", "scales", "data.table", "gridExtra", 
   "plotly", "lubridate", "shinyjs", "shinydashboard", 
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
-  "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", "igraph", "seriation", "GGally"
+  "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", 
+  "igraph", "seriation", "GGally", "knitr", "devtools"
   )
 
 install_if_missing <- function(pkg) {
@@ -24,6 +26,11 @@ if (!require(DESeq2)) {
 
 if (!require(pcaExplorer)) {
   BiocManager::install("pcaExplorer", force = TRUE)
+}
+
+if (!require(tispec)) {
+  library(devtools)
+  install_github('roonysgalbi/tispec')
 }
 
 lapply(required_packages, library, character.only = TRUE)
@@ -60,6 +67,8 @@ library(graphics)
 library(igraph)
 library(GGally)
 library(gridExtra)
+library(tispec)
+library(knitr)
 
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
@@ -100,6 +109,14 @@ mycolors1 <- c(
   `Ovary`="#CCCC00"
 )
 
+mycolors2 <- c(
+  `Immune` = "#31E1F7", 
+  `Respiratory` = "#400D51", 
+  `Excretory` ="#FF7777",
+  `Muscular` = "#D800A6",
+  `Intestine` ="#6499E9", 
+  `Reproductive` = "#836FFF")
+
 ############################################################
 
 # INFO GRAB
@@ -119,8 +136,17 @@ names(tissue_by_system) <- systems
 ui <- navbarPage(
   title = tags$a(
     tags$div(
-      tags$img(src = "UW_logo.png", height = "50px", style = "padding: 5px; margin-top: -17px;"),
-      tags$img(src = "WesternU_logo.png", height = "60px", style = "padding: 5px; margin-top: -19px;")
+      tags$a(
+        href = "https://www.washington.edu",
+        target = "_blank",
+        tags$img(src = "UW_logo.png", height = "50px", style = "padding: 5px; margin-top: -17px;")
+      ),
+      tags$a(
+        href = "https://www.westernu.edu",  # URL for the WesternU website
+        target = "_blank",  # Opens the link in a new tab
+        tags$img(src = "WesternU_logo.png", height = "60px", style = "padding: 5px; margin-top: -19px;")
+      )
+      
     )
   ),
   windowTitle = "INFO GRAB",
@@ -213,7 +239,7 @@ ui <- navbarPage(
            )
   ),
   
-  tabPanel("Analysis",
+  tabPanel("Differential Analysis",
            tabsetPanel(
              tabPanel("Home",
                       sidebarLayout(
@@ -265,7 +291,7 @@ ui <- navbarPage(
                             selectInput("correlation_system", "Select System:", choices = systems)
                           ),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_correlation_plot", "Download Correlation Plot")
+                          downloadButton("download_correlation_plot", "Download PNG")
                         ),
                         mainPanel(
                           uiOutput("title_cor_plot"),
@@ -352,7 +378,7 @@ ui <- navbarPage(
                         ),
                         mainPanel(
                           uiOutput("title_heatmap"),
-                          withLoader(plotOutput("heatmap_plot", width = "80%", height = "750px"), type = "html", loader = "dnaspin")
+                          withLoader(plotOutput("heatmap_plot", width = "85%", height = "750px"), type = "html", loader = "dnaspin")
                         )
                       )
              ),
@@ -471,12 +497,33 @@ ui <- navbarPage(
   #tabPanel("Tissue-specific Analysis",
   #),
   
+  tabPanel("Tissue-Specific Analysis",
+           tabsetPanel(
+           tabPanel("Heatmap",
+                    sidebarLayout(
+                      sidebarPanel(
+                        #sliderInput("tau_threshold", "Tau threshold", min = 0.5, max = 0.99, value = 0.8),
+                        #sliderInput("n_variable_genes", "Number of most variable genes", min = 50, max = 1000, value = 1000),
+                        #tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                        checkboxGroupInput("system_choice", "Select System(s):",
+                                           choices = c("All Systems", unique(phenodata$System)),
+                                           selected = "All Systems"),
+                        uiOutput("tissue_selection_ui"),
+                        ),
+                      mainPanel(
+                        withLoader(plotOutput("tissue_specific_heatmap", width = "100%", height = "750px"), type = "html", loader = "dnaspin")
+                        )
+                      )
+                    )
+           )
+           ),
+  
   tabPanel("About",
            fluidPage(
              h2("App Version and Credits"),
              p("Version: 1.0.0"),
              tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank"),
-             p("Developed by: Oliver Brown"),
+             p("Developed by: Oliver Brown (ombrown@uw.edu)"),
            )
   )
   
@@ -1257,13 +1304,16 @@ server <- function(input, output, session) {
       fontsize = 13,
       fontsize_col = 14,
       fontsize_row = fontsize_row,
-      width = 30
+      width = 30,
+      treeheight_row = 0,
+      treeheight_col = 0
     )
     
     ggheatmap <- as.ggplot(heatmap$gtable) + 
-      theme(text = element_text(family = "Sen"), 
-            legend.position = "right", 
-            legend.justification = "center")
+      theme(legend.position = "right", 
+            legend.justification = "center",
+            legend.text = element_text(size = 4),
+            legend.key.size = unit(0.8, "lines"))  
     
     ggheatmap
   }
@@ -1286,8 +1336,6 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  
   
   ### Correlation Plot
   
@@ -1634,6 +1682,116 @@ server <- function(input, output, session) {
   )
   
   # Tissue specific analysis
+  
+  # Observe changes in the system_choice input
+  observeEvent(input$system_choice, {
+    all_systems_selected <- setdiff(unique(phenodata$System), "All Systems")
+    
+    # Check if "All Systems" should be unchecked when other systems are selected
+    if ("All Systems" %in% input$system_choice && length(input$system_choice) > 1) {
+      updateCheckboxGroupInput(session, "system_choice", 
+                               selected = setdiff(input$system_choice, "All Systems"))
+    }
+    
+    # Check if all individual systems are selected, and then select "All Systems"
+    if (all(all_systems_selected %in% input$system_choice)) {
+      updateCheckboxGroupInput(session, "system_choice", 
+                               selected = "All Systems")
+    }
+  })
+  
+  # UI for tissue selection
+  output$tissue_selection_ui <- renderUI({
+    req(input$system_choice)
+    
+    # Get tissues based on the system choice
+    if ("All Systems" %in% input$system_choice) {
+      tissues <- unique(phenodata$Tissue)
+    } else {
+      tissues <- unique(phenodata$Tissue[phenodata$System %in% input$system_choice])
+    }
+    
+    checkboxGroupInput("tissue_choice", "Select Tissue(s):", choices = tissues, selected = tissues)
+  })
+  
+  output$tissue_specific_heatmap <- renderPlot({
+    req(input$tissue_choice)
+    
+    selected_tissues <- input$tissue_choice
+    
+    samples <- phenodata %>%
+      filter(Tissue %in% selected_tissues) %>%
+      pull(Sample_name)
+    
+    samples <- samples[samples %in% colnames(RPKM_data)]
+    
+    rpkm_filtered <- RPKM_data[, samples, drop = FALSE]
+    
+    non_zero_genes <- apply(rpkm_filtered, 1, function(row) !all(row == 0))
+    rpkm_filtered <- rpkm_filtered[non_zero_genes, ]
+    
+    colnames(rpkm_filtered) <- gsub("Sample_", "", colnames(rpkm_filtered))
+    
+    annotation <- phenodata %>%
+      filter(Sample_name %in% samples) %>%
+      select(Sample_name, Tissue) %>%
+      mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
+      column_to_rownames(var = "Sample_name")
+    
+    tau_scores <- calcTau(rpkm_filtered)
+    
+    
+    filtered_tau <- tau_scores[tau_scores$tau >= 0.8, ]
+    rpkm_filtered <- rpkm_filtered[rownames(rpkm_filtered) %in% rownames(filtered_tau), ]
+    
+    rpkm_tau <- as.matrix(rpkm_filtered)
+    
+    variances= apply(t(rpkm_tau), 2, var)
+    
+    # Change or make able to select
+    top_genes = order(variances, decreasing = TRUE)[1:500]
+    rpkm_heatmap <- rpkm_tau[ top_genes,]
+    
+    annotation <- phenodata %>%
+      filter(Sample_name %in% samples) %>%
+      select(Sample_name, Tissue, System) %>%
+      mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
+      column_to_rownames(var = "Sample_name")
+    
+    present_tissues <- unique(annotation$Tissue)
+    
+    annotation_colors <- list(
+      Tissue = mycolors1[unique(annotation$Tissue)],
+      System = mycolors2[unique(annotation$System)]
+    )
+    
+    n_genes <- nrow(rpkm_tau)
+    
+    pheatmap(
+      rpkm_heatmap, 
+      annotation_col = annotation,
+      annotation_colors = annotation_colors,
+      clustering_distance_rows = "correlation",
+      clustering_distance_cols = "correlation",
+      clustering_method = "complete",
+      scale="row",
+      drop_levels = TRUE,
+      border_color = "NA",
+      cluster_rows = TRUE,
+      cluster_cols = TRUE,
+      show_rownames = FALSE,
+      show_colnames = TRUE,
+      legend_breaks = c(-6, 0, 6),
+      legend_labels = c("low", "medium" ,"high"),
+      legend = TRUE,
+      main = "Tissue-Specific (TS) Transcript Isoforms",
+      angle_col = 45,
+      fontsize = 12,
+      fontsize_col = 8,
+      treeheight_col = 0
+    )
+  
+  })
   
 }
 
