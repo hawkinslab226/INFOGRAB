@@ -124,6 +124,8 @@ mycolors2 <- c(
 # Cite BioRender
 # Cite pcaExplorer
 
+# Need to update how the data loads
+
 tissue_names <- unique(phenodata$Tissue)
 
 systems <- unique(phenodata$System)
@@ -142,8 +144,8 @@ ui <- navbarPage(
         tags$img(src = "UW_logo.png", height = "50px", style = "padding: 5px; margin-top: -17px;")
       ),
       tags$a(
-        href = "https://www.westernu.edu",  # URL for the WesternU website
-        target = "_blank",  # Opens the link in a new tab
+        href = "https://www.westernu.edu",
+        target = "_blank",
         tags$img(src = "WesternU_logo.png", height = "60px", style = "padding: 5px; margin-top: -19px;")
       )
       
@@ -394,7 +396,7 @@ ui <- navbarPage(
                             selectInput("pca_system_select", "Select System:", choices = unique(phenodata$System))
                           ),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_pca_plot", "Download PCA Plot")
+                          downloadButton("download_pca_plot", "Download PNG")
                         ),
                         mainPanel(
                           uiOutput("title_pca_plot"),
@@ -502,13 +504,23 @@ ui <- navbarPage(
            tabPanel("Heatmap",
                     sidebarLayout(
                       sidebarPanel(
-                        #sliderInput("tau_threshold", "Tau threshold", min = 0.5, max = 0.99, value = 0.8),
-                        #sliderInput("n_variable_genes", "Number of most variable genes", min = 50, max = 1000, value = 1000),
-                        #tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                        selectInput("n_variable_genes", "Number of most variable genes", choices = c(100, 500, 1000), selected = 500),
+                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                         checkboxGroupInput("system_choice", "Select System(s):",
                                            choices = c("All Systems", unique(phenodata$System)),
                                            selected = "All Systems"),
                         uiOutput("tissue_selection_ui"),
+                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                        selectInput("color_scale", "Select Color Scale", 
+                                    choices = c("Blue-White-Red" = "blue_white_red", 
+                                                "Green-Black-Red" = "green_black_red",
+                                                "Purple-White-Green" = "purple_white_green",
+                                                "Viridis" = "viridis",
+                                                "Plasma" = "plasma",
+                                                "Cividis" = "cividis",
+                                                "Inferno" = "inferno")),
+                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                        downloadButton("download_tissue_specific_heatmap", "Download PNG")
                         ),
                       mainPanel(
                         withLoader(plotOutput("tissue_specific_heatmap", width = "100%", height = "750px"), type = "html", loader = "dnaspin")
@@ -1587,14 +1599,9 @@ server <- function(input, output, session) {
 
 ### barplots
 
-# Search for gene
-  
-  # Change to barplots
-
   
   barplot_data <- reactiveVal(NULL)
-  
-  # Reactive value to store the plot
+
   current_plot <- reactiveVal(NULL)
   
   observeEvent(input$search_gene_barplot, {
@@ -1715,7 +1722,9 @@ server <- function(input, output, session) {
   })
   
   output$tissue_specific_heatmap <- renderPlot({
+    
     req(input$tissue_choice)
+    current_plot(NULL)
     
     selected_tissues <- input$tissue_choice
     
@@ -1747,9 +1756,8 @@ server <- function(input, output, session) {
     rpkm_tau <- as.matrix(rpkm_filtered)
     
     variances= apply(t(rpkm_tau), 2, var)
-    
-    # Change or make able to select
-    top_genes = order(variances, decreasing = TRUE)[1:500]
+  
+    top_genes = order(variances, decreasing = TRUE)[1:input$n_variable_genes]
     rpkm_heatmap <- rpkm_tau[ top_genes,]
     
     annotation <- phenodata %>%
@@ -1757,7 +1765,7 @@ server <- function(input, output, session) {
       select(Sample_name, Tissue, System) %>%
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
-    
+      
     present_tissues <- unique(annotation$Tissue)
     
     annotation_colors <- list(
@@ -1767,22 +1775,42 @@ server <- function(input, output, session) {
     
     n_genes <- nrow(rpkm_tau)
     
-    pheatmap(
-      rpkm_heatmap, 
-      annotation_col = annotation,
+    color_scale <- switch(input$color_scale,
+                          "blue_white_red" = c("royalblue", "white", "firebrick3"),
+                          "green_black_red" = c("springgreen2", "black", "firebrick2"),
+                          "purple_white_green" = c("purple", "white", "springgreen4"),
+                          "viridis" = viridis(100),
+                          "plasma" = plasma(100),
+                          "cividis" = cividis(100),
+                          "inferno" = inferno(100))
+    
+    # Generating the heatmap
+    # Clustering the samples based on the annotation data
+    annotation_order <- annotation %>%
+      arrange(System, Tissue) %>% # Arrange samples by Tissue, then by System
+      rownames()
+    
+    # Reordering the rpkm_heatmap matrix according to the annotation order
+    rpkm_heatmap_ordered <- rpkm_heatmap[, annotation_order]
+    
+    # Generating the heatmap
+    p <- pheatmap(
+      rpkm_heatmap_ordered, 
+      annotation_col = annotation[annotation_order, ],  # Reorder annotation to match heatmap
       annotation_colors = annotation_colors,
+      color = colorRampPalette(color_scale)(100),
       clustering_distance_rows = "correlation",
       clustering_distance_cols = "correlation",
       clustering_method = "complete",
-      scale="row",
+      scale = "row",
       drop_levels = TRUE,
       border_color = "NA",
       cluster_rows = TRUE,
-      cluster_cols = TRUE,
+      cluster_cols = FALSE,  # Disable column clustering to preserve the order
       show_rownames = FALSE,
       show_colnames = TRUE,
       legend_breaks = c(-6, 0, 6),
-      legend_labels = c("low", "medium" ,"high"),
+      legend_labels = c("low", "medium", "high"),
       legend = TRUE,
       main = "Tissue-Specific (TS) Transcript Isoforms",
       angle_col = 45,
@@ -1790,8 +1818,22 @@ server <- function(input, output, session) {
       fontsize_col = 8,
       treeheight_col = 0
     )
+    
+    
+    current_plot(p)
+    
+    print(p)
   
   })
+  
+  output$download_tissue_specific_heatmap <- downloadHandler(
+    filename = function() {
+      paste("Tissue_specific_heatmap", ".png", sep = "")
+    },
+    content = function(file) {
+      ggsave(file, plot = current_plot(), device = "png", width = 10, height = 11, bg = "white")
+    }
+  )
   
 }
 
