@@ -1789,7 +1789,7 @@ server <- function(input, output, session) {
     updateBarplotData(found_genes)
     
     # Update the title
-    current_title("Now Showing Searched Genes")
+    current_title("Showing Searched Genes")
   })
   
   observeEvent(input$random_gene_barplot, {
@@ -1798,7 +1798,7 @@ server <- function(input, output, session) {
     updateBarplotData(random_genes)
     
     # Update the title
-    current_title("Now showing searched genes")
+    current_title("Showing searched genes")
   })
   
   observeEvent(input$clear_search_gene_barplot, {
@@ -2016,9 +2016,8 @@ server <- function(input, output, session) {
                           "cividis" = cividis(100),
                           "inferno" = inferno(100))
     
-    # Generating the heatmap
     annotation_order <- annotation %>%
-      arrange(System, Tissue) %>% # Arrange samples by Tissue, then by System
+      arrange(System, Tissue) %>%
       rownames()
     
     rpkm_heatmap_ordered <- rpkm_heatmap[, annotation_order]
@@ -2066,8 +2065,7 @@ server <- function(input, output, session) {
   
   observeEvent(input$add_to_cart_tissue_specific_heatmap, {
     req(input$tissue_choice, input$n_variable_genes)
-    
-    # Get the top genes based on the number of most variable genes selected
+
     selected_tissues <- input$tissue_choice
     
     samples <- phenodata %>%
@@ -2085,10 +2083,8 @@ server <- function(input, output, session) {
     top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
     top_genes <- rownames(rpkm_filtered)[top_genes]
     
-    # Add the selected top genes to the cart
     add_to_cart(top_genes)
-    
-    # Notify the user
+
     showNotification("genes added to the cart.", type = "message")
   })
   
@@ -2142,15 +2138,14 @@ server <- function(input, output, session) {
     
     if (length(genes) > 0) {
       showModal(modalDialog(
-        title = "Copy Gene List",
+        title = "Copy Gene Cart",
         radioButtons("separator_choice", "Separator:",
                      choices = c("Comma" = ",", "New Line" = "\n"),
                      selected = ","),
-        textAreaInput("gene_list_display", "Gene List", "", rows = 15, cols = 100),
+        textAreaInput("gene_list_display", "Gene Cart (Copy with ctrl + a then ctrl + c)", "", rows = 15, cols = 100),
         footer = modalButton("Close")
       ))
       
-      # Update the gene list automatically when the separator choice changes
       observe({
         separator <- input$separator_choice
         genes_string <- paste(genes, collapse = separator)
