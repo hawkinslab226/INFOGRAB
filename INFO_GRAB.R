@@ -2111,7 +2111,7 @@ server <- function(input, output, session) {
   
   observeEvent(input$confirm_clear_cart, {
     cart_genes(character(0))
-    removeModal()  # Close the modal after clearing the cart
+    removeModal()
     showNotification("Gene cart has been cleared.", type = "message")
   })
   
@@ -2131,21 +2131,17 @@ server <- function(input, output, session) {
     if (length(genes) > 0) {
       genes_string <- paste(genes, collapse = ", ")
       
-      # Update the text area content
-      runjs(sprintf("document.getElementById('gene_text_area').value = '%s';", jsEscape(genes_string)))
-      
-      # Copy the content
-      js <- "
-      var geneTextArea = document.getElementById('gene_text_area');
-      geneTextArea.select();
-      document.execCommand('copy');
-      alert('Gene list copied to clipboard');
-    "
-      runjs(js)
+      showModal(modalDialog(
+        title = "Copy Gene List",
+        textAreaInput("gene_list_display", "Gene List", genes_string, rows = 15, cols = 100),
+        footer = modalButton("Close")
+      ))
     } else {
       showNotification("Cart is empty.", type = "warning")
     }
   })
+  
+  
   
   # Helper function to escape special characters in JavaScript strings
   jsEscape <- function(string) {
