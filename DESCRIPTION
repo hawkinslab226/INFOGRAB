@@ -44,4 +44,5 @@ Imports:
     GGally,
     tispec,
     knitr,
-    devtools
+    devtools,
+    stringr
