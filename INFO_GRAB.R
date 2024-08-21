@@ -556,7 +556,12 @@ ui <- navbarPage(
                tags$textarea(id = "gene_text_area", style = "position: absolute; left: -9999px;"),
                
                actionButton("copy_cart_genes", "Copy Genes to Clipboard"),
-               actionButton("clear_cart", "Clear Cart")
+               actionButton("clear_cart", "Clear Cart"),
+               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+               tags$h3("Useful Links"),
+               tags$a(href = "http://bioinformatics.sdstate.edu/go/", 
+                      "ShinyGO: Gene Ontology Enrichment Analysis", 
+                      target = "_blank"),
              ),
              mainPanel(
                DTOutput("cart_gene_table")
