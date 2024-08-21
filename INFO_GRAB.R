@@ -2123,7 +2123,6 @@ server <- function(input, output, session) {
     showNotification("Gene cart has been cleared.", type = "message")
   })
   
-  
   output$cart_gene_table <- renderDT({
     genes <- cart_genes()
     if (length(genes) == 0) {
@@ -2140,9 +2139,9 @@ server <- function(input, output, session) {
       showModal(modalDialog(
         title = "Copy Gene Cart",
         radioButtons("separator_choice", "Separator:",
-                     choices = c("Comma" = ",", "New Line" = "\n"),
-                     selected = ","),
-        textAreaInput("gene_list_display", "Gene Cart (Copy with ctrl + a then ctrl + c)", "", rows = 15, cols = 100),
+                     choices = c("Comma" = ", ", "New Line" = "\n"),
+                     selected = ", "),
+        textAreaInput("gene_list_display", "Gene Cart (Copy with CTRL + A then CTRL + C)", "", rows = 15, cols = 100),
         footer = modalButton("Close")
       ))
       
