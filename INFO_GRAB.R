@@ -559,16 +559,23 @@ ui <- navbarPage(
                actionButton("clear_cart", "Clear Cart"),
                tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                tags$h3("Useful Links"),
-               tags$a(href = "http://bioinformatics.sdstate.edu/go/", 
-                      "ShinyGO: Gene Ontology Enrichment Analysis", 
-                      target = "_blank"),
+               div(style = "font-size: 15px;", 
+                   tags$ul(
+                     tags$li(a(href = "http://bioinformatics.sdstate.edu/go/", 
+                               "ShinyGO: Gene Ontology Enrichment Analysis", target = "_blank")),
+                     tags$li(a(href = "https://davidbioinformatics.nih.gov/tools.jsp", 
+                               "DAVID: Database for Annotation, Visualization and Integrated Discovery", target = "_blank")),
+                     tags$li(a(href = "https://pantherdb.org", 
+                               "PantherDB: Panther Classification System", target = "_blank"))
+                   )
+               )
+               
              ),
              mainPanel(
                DTOutput("cart_gene_table")
              )
            )
   ),
-  
   
   tabPanel("About",
            fluidPage(
@@ -2134,24 +2141,25 @@ server <- function(input, output, session) {
     genes <- cart_genes()
     
     if (length(genes) > 0) {
-      genes_string <- paste(genes, collapse = ", ")
-      
       showModal(modalDialog(
         title = "Copy Gene List",
-        textAreaInput("gene_list_display", "Gene List", genes_string, rows = 15, cols = 100),
+        radioButtons("separator_choice", "Separator:",
+                     choices = c("Comma" = ",", "New Line" = "\n"),
+                     selected = ","),
+        textAreaInput("gene_list_display", "Gene List", "", rows = 15, cols = 100),
         footer = modalButton("Close")
       ))
+      
+      # Update the gene list automatically when the separator choice changes
+      observe({
+        separator <- input$separator_choice
+        genes_string <- paste(genes, collapse = separator)
+        updateTextAreaInput(session, "gene_list_display", value = genes_string)
+      })
     } else {
       showNotification("Cart is empty.", type = "warning")
     }
   })
-  
-  
-  
-  # Helper function to escape special characters in JavaScript strings
-  jsEscape <- function(string) {
-    gsub("'", "\\'", gsub('"', '\\"', gsub("\n", "\\n", string)))
-  }
   
 }
 
