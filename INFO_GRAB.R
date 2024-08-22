@@ -135,6 +135,7 @@ tissue_by_system <- lapply(systems, function(system) {
 })
 names(tissue_by_system) <- systems
 
+##################
 
 ui <- navbarPage(
   title = tags$a(
@@ -279,7 +280,8 @@ ui <- navbarPage(
                           actionButton("add_to_cart_home", "Add to Gene Cart"),
                           DTOutput("searched_gene_info"),
                           br(),
-                          uiOutput("collapsePanels"),
+                          uiOutput("collapsePanels")
+                          
                         )
                       )
              ),
@@ -586,6 +588,8 @@ ui <- navbarPage(
            )
   )
 )
+
+##########
 
 server <- function(input, output, session) {
   
@@ -951,16 +955,6 @@ server <- function(input, output, session) {
     }
   })
   
-  
-  output$collapsePanels <- renderUI({
-    bsCollapse(id = "collapseTables", open = "",
-               shinyBS::bsCollapsePanel("Ten Smallest p-values", DTOutput("table_smallest_pvalues")),
-               shinyBS::bsCollapsePanel("Ten Largest Absolute Fold Changes", DTOutput("table_largest_fc")),
-               shinyBS::bsCollapsePanel(title = tissue_titles()$upregulated, DTOutput("table_upregulated")),
-               shinyBS::bsCollapsePanel(title = tissue_titles()$downregulated, DTOutput("table_downregulated"))
-    )
-  })
-  
   output$table_smallest_pvalues <- renderDT({
     data <- filtered_data_combined()
     req(data)
@@ -1096,6 +1090,88 @@ server <- function(input, output, session) {
     
     showNotification("genes added to the cart.", type = "message")
   })
+  
+  observeEvent(input$add_smallest_pvalues_cart, {
+    data <- filtered_data_combined()
+    req(data)
+    
+    smallest_pvalues_genes <- data %>% 
+      arrange(padj) %>% 
+      head(10) %>%
+      pull(Gene)
+    
+    add_to_cart(smallest_pvalues_genes)
+    
+    showNotification(paste(length(smallest_pvalues_genes), "genes added to the cart from the smallest p-values."), type = "message")
+  })
+  
+  observeEvent(input$add_largest_fc_cart, {
+    data <- filtered_data_combined()
+    req(data)
+    
+    largest_fc_genes <- data %>% 
+      arrange(desc(abs(log2FoldChange))) %>% 
+      head(10) %>%
+      pull(Gene)
+    
+    add_to_cart(largest_fc_genes)
+    
+    showNotification(paste(length(largest_fc_genes), "genes added to the cart from the largest fold changes."), type = "message")
+  })
+  
+  observeEvent(input$add_upregulated_cart, {
+    data <- filtered_data_combined()
+    req(data)
+    
+    upregulated_genes <- data %>% 
+      arrange(desc(log2FoldChange)) %>% 
+      head(10) %>%
+      pull(Gene)
+    
+    add_to_cart(upregulated_genes)
+    
+    showNotification(paste(length(upregulated_genes), "genes added to the cart from the upregulated genes."), type = "message")
+  })
+  
+  observeEvent(input$add_downregulated_cart, {
+    data <- filtered_data_combined()
+    req(data)
+    
+    downregulated_genes <- data %>% 
+      arrange(log2FoldChange) %>% 
+      head(10) %>%
+      pull(Gene)
+    
+    add_to_cart(downregulated_genes)
+    
+    showNotification(paste(length(downregulated_genes), "genes added to the cart from the downregulated genes."), type = "message")
+  })
+  
+  output$collapsePanels <- renderUI({
+    bsCollapse(id = "collapseTables", open = "",
+               shinyBS::bsCollapsePanel("Ten Smallest p-values", 
+                                        DTOutput("table_smallest_pvalues"),
+                                        br(),
+                                        actionButton("add_smallest_pvalues_cart", "Add to Gene Cart")
+               ),
+               shinyBS::bsCollapsePanel("Ten Largest Absolute Fold Changes", 
+                                        DTOutput("table_largest_fc"),
+                                        br(),
+                                        actionButton("add_largest_fc_cart", "Add to Gene Cart")
+               ),
+               shinyBS::bsCollapsePanel(title = tissue_titles()$upregulated, 
+                                        DTOutput("table_upregulated"),
+                                        br(),
+                                        actionButton("add_upregulated_cart", "Add to Gene Cart")
+               ),
+               shinyBS::bsCollapsePanel(title = tissue_titles()$downregulated, 
+                                        DTOutput("table_downregulated"),
+                                        br(),
+                                        actionButton("add_downregulated_cart", "Add to Gene Cart")
+               )
+    )
+  })
+  
   
   ### Volcano Plot
   
@@ -1407,13 +1483,6 @@ server <- function(input, output, session) {
       dev.off()
     }
   )
-  
-  # Function to add genes to the cart
-  add_to_cart <- function(new_genes) {
-    current_cart <- cart_genes()
-    updated_cart <- unique(c(current_cart, new_genes))
-    cart_genes(updated_cart)
-  }
   
   # Add to Cart functionality for the Heatmap tab
   observeEvent(input$add_to_cart_heatmap, {
@@ -2089,11 +2158,7 @@ server <- function(input, output, session) {
   })
   
   
-  
-  
-  
   ##############
-  
   
   # Gene cart
   
