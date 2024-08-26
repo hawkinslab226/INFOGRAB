@@ -1,5 +1,5 @@
 
-#setwd("~/Documents/Internship/InfoGrab")
+setwd("~/Documents/Internship/InfoGrab")
 
 required_packages <- c(
   "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
@@ -10,13 +10,13 @@ required_packages <- c(
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
   "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", 
   "igraph", "seriation", "GGally", "knitr", "devtools", "stringr"
-  )
+)
 
 install_if_missing <- function(pkg) {
   if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
-    }
   }
+}
 
 lapply(required_packages, install_if_missing)
 
@@ -318,13 +318,14 @@ ui <- navbarPage(
                         sidebarPanel(
                           textInput("searched_gene_volcano", "Search for gene:", width = '600px'),
                           actionButton("search_gene_volcano", "Search"),
+                          actionButton("add_to_cart_volcano", "Add to Gene Cart"),
                           actionButton("clear_search_gene_volcano", "Clear"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           
                           radioButtons("labeling_option", "Labeling Options:",
                                        choices = list("Basic labels" = "basic", "Advanced labels" = "advanced"),
                                        selected = "basic"),
-
+                          
                           conditionalPanel(
                             condition = "input.labeling_option == 'basic'",
                             sliderInput("n_labels", "Number of Labels", min = 0, max = 100, value = 10)
@@ -389,11 +390,13 @@ ui <- navbarPage(
                         ),
                         mainPanel(
                           uiOutput("title_heatmap"),
-                          withLoader(plotOutput("heatmap_plot", width = "85%", height = "750px"), type = "html", loader = "dnaspin")
+                          withLoader(plotOutput("heatmap_plot", width = "85%", height = "750px", 
+                                                brush = brushOpts(id = "heatmap_brush", resetOnNew = TRUE)), 
+                                     type = "html", loader = "dnaspin")
                         )
                       )
              ),
-
+             
              tabPanel("PCA",
                       sidebarLayout(
                         sidebarPanel(
@@ -516,41 +519,45 @@ ui <- navbarPage(
   
   tabPanel("Tissue-Specific Analysis",
            tabsetPanel(
-           tabPanel("Heatmap",
-                    sidebarLayout(
-                      sidebarPanel(
-                        selectInput("n_variable_genes", "Number of most variable genes", choices = c(50, 100, 500, 1000), selected = 500),
-                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                        checkboxGroupInput("system_choice", "Select System(s):",
-                                           choices = c("All Systems", unique(phenodata$System)),
-                                           selected = "All Systems"),
-                        uiOutput("tissue_selection_ui"),
-                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                        selectInput("color_scale_tissue_specific", "Select Color Scale", 
-                                    choices = c("Purple-White-Green" = "purple_white_green",
-                                                "Blue-White-Red" = "blue_white_red", 
-                                                "Green-Black-Red" = "green_black_red",
-                                                "Blue-Yellow-Purple" = "cyan_yellow_purple",
-                                                "Viridis" = "viridis",
-                                                "Plasma" = "plasma",
-                                                "Cividis" = "cividis",
-                                                "Inferno" = "inferno"),
-                                    selected = "purple_white_green"),
-                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                        actionButton("add_to_cart_tissue_specific_heatmap", "Add to Gene Cart"),
-                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                        downloadButton("download_tissue_specific_heatmap", "Download PNG"),
-                        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                        tags$p("This section displays a tissue-specific heatmap, which focuses on the expression of genes that are most variable across the selected tissues."),
-                        tags$p("The heatmap is color-coded to represent different levels of gene expression, allowing you to easily identify patterns and differences in gene expression between tissues. This is particularly useful for identifying tissue-specific genes and understanding how gene expression varies across different biological systems.")
+             tabPanel("Heatmap",
+                      sidebarLayout(
+                        sidebarPanel(
+                          selectInput("n_variable_genes", "Number of most variable genes", choices = c(50, 100, 500, 1000), selected = 500),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          checkboxGroupInput("system_choice", "Select System(s):",
+                                             choices = c("All Systems", unique(phenodata$System)),
+                                             selected = "All Systems"),
+                          uiOutput("tissue_selection_ui"),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          selectInput("color_scale_tissue_specific", "Select Color Scale", 
+                                      choices = c("Purple-White-Green" = "purple_white_green",
+                                                  "Blue-White-Red" = "blue_white_red", 
+                                                  "Green-Black-Red" = "green_black_red",
+                                                  "Blue-Yellow-Purple" = "cyan_yellow_purple",
+                                                  "Viridis" = "viridis",
+                                                  "Plasma" = "plasma",
+                                                  "Cividis" = "cividis",
+                                                  "Inferno" = "inferno"),
+                                      selected = "purple_white_green"),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          actionButton("add_to_cart_tissue_specific_heatmap", "Add to Gene Cart"),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          downloadButton("download_tissue_specific_heatmap", "Download PNG"),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          tags$p("This section displays a tissue-specific heatmap, which focuses on the expression of genes that are most variable across the selected tissues."),
+                          tags$p("The heatmap is color-coded to represent different levels of gene expression, allowing you to easily identify patterns and differences in gene expression between tissues. This is particularly useful for identifying tissue-specific genes and understanding how gene expression varies across different biological systems.")
                         ),
-                      mainPanel(
-                        withLoader(plotOutput("tissue_specific_heatmap", width = "100%", height = "750px"), type = "html", loader = "dnaspin")
+                        mainPanel(
+                          withLoader(plotOutput("tissue_specific_heatmap", width = "100%", height = "750px", 
+                                                click = "heatmap_click", brush = brushOpts(id = "heatmap_tissue_specific_brush", resetOnNew = TRUE)), 
+                                     type = "html", loader = "dnaspin")
                         )
                       )
-                    )
+             )
            )
-           ),
+  ),
+  
+  tabPanel("Genome Browser"),
   
   tabPanel("Gene Checkout", 
            sidebarLayout(
@@ -1343,7 +1350,30 @@ server <- function(input, output, session) {
     }
   )
   
+  observeEvent(input$add_to_cart_volcano, {
+    data <- unfiltered_data()
+    gene <- search_gene_volcano()
+    
+    if (!is.null(gene) && gene != "") {
+      # Convert gene to uppercase for comparison
+      gene_upper <- toupper(gene)
+      
+      # Check if the gene exists in the dataset
+      if (gene_upper %in% toupper(data$Gene)) {
+        add_to_cart(gene_upper)
+        showNotification("Gene added to the cart.", type = "message")
+      } else {
+        showNotification(paste("Gene", gene, "not found."), type = "warning")
+      }
+    } else {
+      showNotification("No gene specified.", type = "warning")
+    }
+  })
+  
   ### Heatmap
+  
+  rpkm_filtered <- reactiveVal()
+  ordered_genes <- reactiveVal(NULL) 
   
   output$title_heatmap <- renderUI({
     req(input$tissue_select1, input$tissue_select2)
@@ -1440,6 +1470,8 @@ server <- function(input, output, session) {
                           "cividis" = cividis(100),
                           "inferno" = inferno(100))
     
+    rpkm_filtered(rpkm_filtered)
+    
     heatmap <- pheatmap(
       rpkm_filtered, 
       scale = "row",
@@ -1462,6 +1494,10 @@ server <- function(input, output, session) {
       treeheight_col = 0
     )
     
+    ordered_genes(heatmap$tree_row$labels[heatmap$tree_row$order])
+    
+    rpkm_filtered(rpkm_filtered)
+    
     heatmap
   }
   
@@ -1471,6 +1507,43 @@ server <- function(input, output, session) {
     search_genes <- search_genes_heatmap()
     generate_plot(data, search_genes)
   })
+  
+  observeEvent(input$heatmap_brush, {
+    brush_data <- input$heatmap_brush
+    
+    if (!is.null(brush_data)) {
+      # Get the ordered genes from the heatmap
+      heatmap_rows <- ordered_genes()
+      total_height <- length(heatmap_rows)
+      
+      # Calculate the indices based on brush coordinates, reversing the order
+      start_row_index <- total_height - ceiling(brush_data$ymin / (1 / total_height)) + 1
+      end_row_index <- total_height - ceiling(brush_data$ymax / (1 / total_height)) + 1
+      
+      # Ensure indices are within the valid range
+      start_row_index <- max(min(start_row_index, total_height), 1)
+      end_row_index <- max(min(end_row_index, total_height), 1)
+      
+      # Select the correct genes based on reversed indices
+      selected_rows <- heatmap_rows[end_row_index:start_row_index]
+      
+      # Store the selected genes in reactiveVal
+      selected_genes(selected_rows)
+      
+      # Show modal with the selected genes and add to cart button
+      showModal(modalDialog(
+        title = "Selected Genes",
+        paste("You have selected:", paste(selected_rows, collapse = ", ")),
+        footer = tagList(
+          actionButton("add_to_cart_tissue_specific_modal", "Add to Gene Cart"),
+          modalButton("Close")
+        ),
+        easyClose = TRUE
+      ))
+    }
+  })
+  
+  
   
   output$download_heatmap_plot <- downloadHandler(
     filename = function() {paste('heatmap.png')},
@@ -1659,7 +1732,7 @@ server <- function(input, output, session) {
             legend.position = "none",
             plot.margin = margin(0, 0, 0, 0, "pt")
           )
-      
+        
         
         
         
@@ -1698,7 +1771,7 @@ server <- function(input, output, session) {
   
   
   
-### PCA
+  ### PCA
   
   output$title_pca_plot <- renderUI({
     req(input$tissue_select1, input$tissue_select2)
@@ -1784,9 +1857,9 @@ server <- function(input, output, session) {
   })
   
   
-
-
-### barplots
+  
+  
+  ### barplots
   
   barplot_data <- reactiveVal(NULL)
   current_plot <- reactiveVal(NULL)
@@ -1818,23 +1891,16 @@ server <- function(input, output, session) {
     return(top_genes)
   }
   
-  
-  # Observe event when "Gene Expression Chart" tab is selected
-  # Observe event when "Gene Expression Chart" tab is selected
   observeEvent(input$differential_analysis_tab, {
     if (input$differential_analysis_tab == "Gene Expression Chart") {
-      
-      # Ensure tissue selections are available
+
       req(input$tissue_select1, input$tissue_select2)
       
-      # Calculate the top 5 commonly expressed genes in both tissues using the common_genes function
       top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
       
-      # Automatically update the barplot data with these top genes
       updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
       updateBarplotData(top_genes)
-      
-      # Update the title to reflect the currently displayed data
+
       current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
     }
   })
@@ -1881,7 +1947,7 @@ server <- function(input, output, session) {
     current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
     
     req(input$tissue_select1, input$tissue_select2)
-
+    
     top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
     
     updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
@@ -1993,7 +2059,11 @@ server <- function(input, output, session) {
   
   # Tissue specific analysis
   
-  # Observe changes in the system_choice input
+  selected_genes <- reactiveVal()
+  rpkm_heatmap_ordered <- reactiveVal()
+  ordered_tissue_specific_genes <- reactiveVal(NULL)
+  
+  
   observeEvent(input$system_choice, {
     all_systems_selected <- setdiff(unique(phenodata$System), "All Systems")
     
@@ -2007,11 +2077,10 @@ server <- function(input, output, session) {
                                selected = "All Systems")
     }
   })
-
+  
   output$tissue_selection_ui <- renderUI({
     req(input$system_choice)
     
-    # Get tissues based on the system choice
     if ("All Systems" %in% input$system_choice) {
       tissues <- unique(phenodata$Tissue)
     } else {
@@ -2022,7 +2091,6 @@ server <- function(input, output, session) {
   })
   
   output$tissue_specific_heatmap <- renderPlot({
-    
     req(input$tissue_choice)
     current_plot(NULL)
     
@@ -2049,23 +2117,22 @@ server <- function(input, output, session) {
     
     tau_scores <- calcTau(rpkm_filtered)
     
-    
     filtered_tau <- tau_scores[tau_scores$tau >= 0.8, ]
     rpkm_filtered <- rpkm_filtered[rownames(rpkm_filtered) %in% rownames(filtered_tau), ]
     
     rpkm_tau <- as.matrix(rpkm_filtered)
     
-    variances= apply(t(rpkm_tau), 2, var)
-  
-    top_genes = order(variances, decreasing = TRUE)[1:input$n_variable_genes]
-    rpkm_heatmap <- rpkm_tau[ top_genes,]
+    variances <- apply(t(rpkm_tau), 2, var)
+    
+    top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
+    rpkm_heatmap <- rpkm_tau[top_genes,]
     
     annotation <- phenodata %>%
       filter(Sample_name %in% samples) %>%
       select(Sample_name, Tissue, System) %>%
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
-      
+    
     present_tissues <- unique(annotation$Tissue)
     
     annotation_colors <- list(
@@ -2076,14 +2143,14 @@ server <- function(input, output, session) {
     n_genes <- nrow(rpkm_tau)
     
     color_scale_tissue_specific <- switch(input$color_scale_tissue_specific,
-                          "blue_white_red" = c("royalblue", "white", "firebrick3"),
-                          "green_black_red" = c("springgreen2", "black", "firebrick2"),
-                          "purple_white_green" = c("purple", "white", "springgreen4"),
-                          "cyan_yellow_purple" = c("purple", "lightyellow", "blue"),
-                          "viridis" = viridis(100),
-                          "plasma" = plasma(100),
-                          "cividis" = cividis(100),
-                          "inferno" = inferno(100))
+                                          "blue_white_red" = c("royalblue", "white", "firebrick3"),
+                                          "green_black_red" = c("springgreen2", "black", "firebrick2"),
+                                          "purple_white_green" = c("purple", "white", "springgreen4"),
+                                          "cyan_yellow_purple" = c("purple", "lightyellow", "blue"),
+                                          "viridis" = viridis(100),
+                                          "plasma" = plasma(100),
+                                          "cividis" = cividis(100),
+                                          "inferno" = inferno(100))
     
     annotation_order <- annotation %>%
       arrange(System, Tissue) %>%
@@ -2091,7 +2158,10 @@ server <- function(input, output, session) {
     
     rpkm_heatmap_ordered <- rpkm_heatmap[, annotation_order]
     
-    p <- pheatmap(
+    rpkm_heatmap_ordered(rpkm_heatmap_ordered)
+    
+    
+    heatmap <- pheatmap(
       rpkm_heatmap_ordered, 
       annotation_col = annotation[annotation_order, ],
       annotation_colors = annotation_colors,
@@ -2104,7 +2174,7 @@ server <- function(input, output, session) {
       border_color = "NA",
       cluster_rows = TRUE,
       cluster_cols = FALSE,
-      show_rownames = FALSE,
+      show_rownames = FALSE,  # Ensure row names are shown for interaction
       show_colnames = TRUE,
       legend_breaks = c(-6, 0, 6),
       legend_labels = c("low", "medium", "high"),
@@ -2116,11 +2186,47 @@ server <- function(input, output, session) {
       treeheight_col = 0
     )
     
+    ordered_tissue_specific_genes(heatmap$tree_row$labels[heatmap$tree_row$order])
     
-    current_plot(p)
+    current_plot(heatmap)
     
-    print(p)
+    print(heatmap)
+  })
   
+  
+  observeEvent(input$heatmap_tissue_specific_brush, {
+    brush_data <- input$heatmap_tissue_specific_brush
+    
+    if (!is.null(brush_data)) {
+      # Get the ordered genes from the heatmap
+      heatmap_rows <- ordered_tissue_specific_genes()
+      total_height <- length(heatmap_rows)
+      
+      # Calculate the indices based on brush coordinates, reversing the order
+      start_row_index <- total_height - ceiling(brush_data$ymin / (1 / total_height)) + 1
+      end_row_index <- total_height - ceiling(brush_data$ymax / (1 / total_height)) + 1
+      
+      # Ensure indices are within the valid range
+      start_row_index <- max(min(start_row_index, total_height), 1)
+      end_row_index <- max(min(end_row_index, total_height), 1)
+      
+      # Select the correct genes based on reversed indices
+      selected_rows <- heatmap_rows[end_row_index:start_row_index]
+      
+      # Store the selected genes in reactiveVal
+      selected_genes(selected_rows)
+      
+      # Show modal with the selected genes and add to cart button
+      showModal(modalDialog(
+        title = "Selected Genes",
+        paste("You have selected:", paste(selected_rows, collapse = ", ")),
+        footer = tagList(
+          actionButton("add_to_cart_tissue_specific_modal", "Add to Gene Cart"),
+          modalButton("Close")
+        ),
+        easyClose = TRUE
+      ))
+    }
   })
   
   output$download_tissue_specific_heatmap <- downloadHandler(
@@ -2132,9 +2238,22 @@ server <- function(input, output, session) {
     }
   )
   
+  observeEvent(input$add_to_cart_tissue_specific_modal, {
+    genes_to_add <- selected_genes()
+    
+    if (!is.null(genes_to_add)) {
+      add_to_cart(genes_to_add)
+      
+      showNotification("Genes added to the cart.", type = "message")
+      
+      removeModal()
+    }
+  })
+  
+  
   observeEvent(input$add_to_cart_tissue_specific_heatmap, {
     req(input$tissue_choice, input$n_variable_genes)
-
+    
     selected_tissues <- input$tissue_choice
     
     samples <- phenodata %>%
@@ -2153,9 +2272,16 @@ server <- function(input, output, session) {
     top_genes <- rownames(rpkm_filtered)[top_genes]
     
     add_to_cart(top_genes)
-
-    showNotification("genes added to the cart.", type = "message")
+    
+    showNotification("Genes added to the cart.", type = "message")
   })
+  
+  
+  ##############
+  
+  # Genome Browser
+  
+  
   
   
   ##############
