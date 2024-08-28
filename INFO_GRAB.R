@@ -1,5 +1,5 @@
 
-setwd("~/Documents/Internship/InfoGrab")
+#setwd("~/Documents/Internship/InfoGrab")
 
 required_packages <- c(
   "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
@@ -9,29 +9,47 @@ required_packages <- c(
   "plotly", "lubridate", "shinyjs", "shinydashboard", 
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
   "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", 
-  "igraph", "seriation", "GGally", "knitr", "devtools", "stringr"
+  "igraph", "seriation", "GGally", "knitr", "devtools", "stringr",
+  "BiocManager"
 )
 
 install_if_missing <- function(pkg) {
   if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
   }
-}
+  }
 
 lapply(required_packages, install_if_missing)
 
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+  BiocManager::install("VariantAnnotation", force = TRUE)
+  }
+
 if (!require(DESeq2)) {
   BiocManager::install("DESeq2", force = TRUE)
-}
+  }
 
 if (!require(pcaExplorer)) {
   BiocManager::install("pcaExplorer", force = TRUE)
-}
+  }
+
+if (!require(rtracklayer)) {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/rjson/rjson_0.2.20.tar.gz", repos = NULL, type = "source")
+  BiocManager::install("rtracklayer", force = TRUE)
+  }
 
 if (!require(tispec)) {
   library(devtools)
   install_github('roonysgalbi/tispec')
+  }
+
+if (!require(igvShiny)) {
+  library(devtools)
+  install_github("paul-shannon/igvShiny")
 }
+
+
 
 lapply(required_packages, library, character.only = TRUE)
 
@@ -70,6 +88,11 @@ library(gridExtra)
 library(tispec)
 library(knitr)
 library(stringr)
+library(JBrowseR)
+library(bslib)
+library(igvShiny)
+library(rtracklayer)
+library(VariantAnnotation)
 
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
@@ -124,6 +147,7 @@ mycolors2 <- c(
 
 # Cite BioRender
 # Cite pcaExplorer
+# Cite JBrowseR
 
 # Need to update how the data loads
 
@@ -557,7 +581,50 @@ ui <- navbarPage(
            )
   ),
   
-  tabPanel("Genome Browser"),
+  tabPanel("Genome Browser",
+           fluidPage(
+             tags$head(
+               tags$style(HTML(".shiny-input-container {
+               margin-bottom: 0px; /* Remove bottom margin */
+               }
+               .btn-primary {
+               margin-top: 24px; /* Align button with the input fields */
+               }
+                               "))
+             ),
+             fluidRow(
+               column(3, 
+                      selectInput("genome_select", "Select a Genome", 
+                                  choices = c("galGal6", "GCF_016699485.2"), selected = "galGal6")
+               ),
+               column(4, 
+                      radioButtons("input_type", "Input Type", 
+                                   choices = c("File" = "file", "URL" = "url"), 
+                                   selected = "file"),
+                      conditionalPanel(
+                        condition = "input.input_type == 'file'",
+                        fileInput("file", "Add a Track (.bam, .bedgraph, .gff3, or .vcf)", width = '100%')
+                      ),
+                      conditionalPanel(
+                        condition = "input.input_type == 'url'",
+                        textInput("url", "Enter URL for Track")
+                      )
+               ),
+               column(2, 
+                      actionButton("loadTrack", "Load Track", class = "btn-primary")
+               )
+             ),
+             br(),
+             fluidRow(
+               column(12, 
+                      igvShinyOutput("igvShiny", height = "600px")
+               )
+             )
+           )
+  ),
+  
+  
+  
   
   tabPanel("Gene Checkout", 
            sidebarLayout(
@@ -683,7 +750,8 @@ server <- function(input, output, session) {
             filter(Tissue == tissue) %>%
             pull(Expressed_Genes)
           
-          tissue_data <- RPKM_data %>% select(samples)
+          tissue_data <- RPKM_data %>% 
+            dplyr::select(samples)
           
           gene_expression_sums <- tissue_data %>% 
             rowSums(na.rm = TRUE) %>%
@@ -938,7 +1006,7 @@ server <- function(input, output, session) {
         arrange(padj) %>%
         mutate(FalseDiscoveryRate = format(padj, scientific = T, digits = input$num_of_digits), 
                log2FoldChange = format(log2FoldChange, scientific = T, digits = input$num_of_digits)) %>%
-        select(Gene, log2FoldChange, FalseDiscoveryRate)
+        dplyr::select(Gene, log2FoldChange, FalseDiscoveryRate)
       
       return(datatable(gene_data, 
                        options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE))
@@ -975,7 +1043,7 @@ server <- function(input, output, session) {
       mutate(FalseDiscoveryRate = format(padj, scientific = T, digits = input$num_of_digits), 
              log2FoldChange = format(log2FoldChange, scientific = T, digits = input$num_of_digits)) %>%
       head(10) %>%
-      select(Gene, log2FoldChange, FalseDiscoveryRate)
+      dplyr::select(Gene, log2FoldChange, FalseDiscoveryRate)
     
     datatable(smallest_pvalues, 
               options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE)
@@ -1012,7 +1080,7 @@ server <- function(input, output, session) {
       mutate(FalseDiscoveryRate = format(padj, scientific = T, digits = input$num_of_digits), 
              log2FoldChange = format(log2FoldChange, scientific = T, digits = input$num_of_digits)) %>%
       head(10) %>%
-      select(Gene, log2FoldChange, FalseDiscoveryRate)
+      dplyr::select(Gene, log2FoldChange, FalseDiscoveryRate)
     
     datatable(upregulated, options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE)
   })
@@ -1046,7 +1114,7 @@ server <- function(input, output, session) {
     high_expression <- data %>% 
       arrange(desc(baseMean)) %>% 
       head(10) %>%
-      select(Gene, baseMean, log2FoldChange, padj)
+      dplyr::select(Gene, baseMean, log2FoldChange, padj)
     
     datatable(high_expression, options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE)
   })
@@ -1064,7 +1132,7 @@ server <- function(input, output, session) {
       mutate(FalseDiscoveryRate = format(padj, scientific = T, digits = input$num_of_digits), 
              log2FoldChange = format(log2FoldChange, scientific = T, digits = input$num_of_digits)) %>%
       head(10) %>%
-      select(Gene, log2FoldChange, FalseDiscoveryRate)
+      dplyr::select(Gene, log2FoldChange, FalseDiscoveryRate)
     
     datatable(smallest_pvalues, options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE)
   })
@@ -1075,7 +1143,7 @@ server <- function(input, output, session) {
     content = function(fname){
       data <- filtered_data_combined()
       data <- data %>%
-        select(-Gene)
+        dplyr::select(-Gene)
       write.csv(data, fname)
     }
   )
@@ -1282,7 +1350,7 @@ server <- function(input, output, session) {
       ), labels = volcano_plot_labels) +
       labs(x = "Log2 Fold Change", y = "-log10 Adjusted P-Value", color = "Expression: ") +
       theme_minimal() +
-      theme(
+      ggplot2::theme(
         text = element_text(family = "Sen"),
         legend.position = "bottom",
         legend.box = "horizontal",
@@ -1450,7 +1518,7 @@ server <- function(input, output, session) {
     
     annotation <- phenodata %>%
       filter(Sample_name %in% samples) %>%
-      select(Sample_name, Tissue) %>%
+      dplyr::select(Sample_name, Tissue) %>%
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
@@ -1646,7 +1714,7 @@ server <- function(input, output, session) {
       ggplot(data = data, mapping = mapping) +
         geom_density() +
         theme_void() +
-        theme(
+        ggplot2::theme(
           panel.background = element_rect(fill = color, colour = "black", size = 2)
         )
     }
@@ -1664,13 +1732,13 @@ server <- function(input, output, session) {
         geom_text(aes(x = 0.5, y = 0.5, label = label), size = 5.5, hjust = 0.5, vjust = 0.5) +
         scale_fill_gradient2(low = "blue", mid = "white", high = "firebrick3", limits = c(-1, 1), na.value = NA) +
         theme_void() +
-        theme(legend.position = "none")
+        ggplot2::theme(legend.position = "none")
     }
     
     create_upper <- function(data, mapping, ...) {
       custom_ggally_cor(data = data, mapping = mapping) +
         theme_minimal() +
-        theme(
+        ggplot2::theme(
           plot.title = element_blank(),
           axis.title = element_blank()
         )
@@ -1684,7 +1752,7 @@ server <- function(input, output, session) {
         diag = list(continuous = create_diag),
         lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
       ) +
-        theme(
+        ggplot2::theme(
           legend.position = "none",
           legend.box = "horizontal",
           legend.box.just = "center",
@@ -1728,7 +1796,7 @@ server <- function(input, output, session) {
           xlim(0.5, 3) +  # Adjust x limits for spacing
           ylim(-2*length(present_tissues), length(present_tissues)) +  # Adjust y limits for vertical spacing
           theme_void() +
-          theme(
+          ggplot2::theme(
             legend.position = "none",
             plot.margin = margin(0, 0, 0, 0, "pt")
           )
@@ -1879,7 +1947,7 @@ server <- function(input, output, session) {
     
     # Select the columns in RPKM_data that match the filtered sample names
     selected_samples <- RPKM_data %>%
-      select(all_of(c(tissue1_samples, tissue2_samples)))
+      dplyr::select(all_of(c(tissue1_samples, tissue2_samples)))
     
     # Calculate the average expression across the selected tissues for each gene
     top_genes <- selected_samples %>%
@@ -1954,7 +2022,6 @@ server <- function(input, output, session) {
     updateBarplotData(top_genes)
   })
   
-  # Render the title in the UI
   output$dynamic_title <- renderUI({
     h2(current_title(), style = "text-align: center; margin-top: 20px;")
   })
@@ -1984,7 +2051,6 @@ server <- function(input, output, session) {
     tissue_info <- phenodata[match(melted_data$variable, phenodata$Sample_name), "Tissue"]
     melted_data$Tissue <- tissue_info
     
-    # Ensure that melted_data is valid for plotting
     if (nrow(melted_data) == 0 || all(is.na(melted_data$Tissue))) {
       showNotification("No valid data available for the selected genes and tissues.", type = "error")
       output$dynamic_barplot_output <- renderUI({
@@ -1998,7 +2064,6 @@ server <- function(input, output, session) {
       summarize(average_value = mean(value, na.rm = TRUE), .groups = 'drop') %>%
       ungroup()
     
-    # Ensure the data used for plotting is valid
     if (nrow(average_expression_per_tissue) == 0) {
       showNotification("No valid data available for the selected genes and tissues.", type = "error")
       output$dynamic_barplot_output <- renderUI({
@@ -2015,11 +2080,12 @@ server <- function(input, output, session) {
     })
     
     output$barplot_plot <- renderPlot({
+      
       p <- ggplot(average_expression_per_tissue, aes(x = Tissue, y = average_value, fill = Tissue)) +
         geom_bar(stat = "identity", color = "black", width = 0.8) + 
         facet_wrap(~ Gene, scales = "free", ncol = 1) +
         theme_minimal() +
-        theme(
+        ggplot2::theme(
           axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
           panel.spacing = unit(0.5, "lines"), 
           panel.border = element_rect(color = "black", fill = NA, size = 0.5),
@@ -2028,7 +2094,7 @@ server <- function(input, output, session) {
           panel.background = element_blank(),
           strip.text = element_text(size = 14, face = "bold"),
           legend.position = "none"
-        ) +
+          ) +
         scale_fill_manual(values = mycolors1) +
         labs(y = "Average Expression (Avg. RPKM)", x = "Tissue")
       
@@ -2036,8 +2102,7 @@ server <- function(input, output, session) {
       print(p)
     })
   }
-  
-  
+
   output$download_barplot <- downloadHandler(
     filename = function() {
       paste("Barplot", ".png", sep = "")
@@ -2111,7 +2176,7 @@ server <- function(input, output, session) {
     
     annotation <- phenodata %>%
       filter(Sample_name %in% samples) %>%
-      select(Sample_name, Tissue) %>%
+      dplyr::select(Sample_name, Tissue) %>%
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
@@ -2129,7 +2194,7 @@ server <- function(input, output, session) {
     
     annotation <- phenodata %>%
       filter(Sample_name %in% samples) %>%
-      select(Sample_name, Tissue, System) %>%
+      dplyr::select(Sample_name, Tissue, System) %>%
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
@@ -2281,12 +2346,147 @@ server <- function(input, output, session) {
   
   # Genome Browser
   
+  # Create genome options for IGV
   
+  # Initialize IGV browser with selected genome
+  
+  options(shiny.maxRequestSize = 1024 * 1024^2)  # 1 GB
+  
+  # Helper function to handle list columns
+  convert_lists_to_chars <- function(df) {
+    df[] <- lapply(df, function(x) if (is.list(x)) sapply(x, toString) else x)
+    return(df)
+  }
+  
+  # Initialize IGV browser with selected genome
+  observeEvent(input$genome_select, {
+    genome <- input$genome_select
+    options <- parseAndValidateGenomeSpec(genomeName = genome)
+    
+    output$igvShiny <- renderIgvShiny({
+      igvShiny(options)
+    })
+  })
+  
+  observeEvent(input$loadTrack, {
+    # Define a color table and attributes for visualization
+    colorTable <- list("gene" = "blue")
+    colorByAttribute <- "type"
+    displayMode <- "EXPANDED"
+    visibilityWindow <- 1000000
+    
+    if (input$input_type == "file" && !is.null(input$file)) {
+      file_path <- input$file$datapath
+      file_type <- tools::file_ext(input$file$name)
+      
+      # Handling different file types
+      if (file_type == "gff3") {
+        tbl.gff3 <- import(file_path, format = "gff3")
+        tbl.gff3 <- convert_lists_to_chars(as.data.frame(tbl.gff3))  # Convert list columns to character strings
+        loadGFF3TrackFromLocalData(
+          session = session,
+          id = "igvShiny",
+          trackName = "Uploaded GFF3 Track",
+          tbl.gff3 = tbl.gff3,
+          color = "gray",
+          colorTable = colorTable,
+          colorByAttribute = colorByAttribute,
+          displayMode = displayMode,
+          trackHeight = 50,
+          visibilityWindow = visibilityWindow,
+          deleteTracksOfSameName = TRUE
+        )
+      } else if (file_type == "bam") {
+        loadBamTrackFromLocalData(
+          session = session,
+          id = "igvShiny",
+          trackName = "Uploaded BAM Track",
+          bamFilePath = file_path,
+          displayMode = displayMode,
+          deleteTracksOfSameName = TRUE
+        )
+      } else if (file_type == "bedgraph") {
+        tbl.bedgraph <- import(file_path, format = "bedgraph")
+        loadBedGraphTrack(
+          session = session,
+          id = "igvShiny",
+          trackName = "Uploaded BedGraph Track",
+          tbl = tbl.bedgraph,
+          color = "gray",
+          trackHeight = 30,
+          autoscale = TRUE,
+          deleteTracksOfSameName = TRUE
+        )
+      } else if (file_type == "vcf") {
+        vcf_data <- readVcf(file_path)
+        loadVcfTrack(
+          session = session,
+          id = "igvShiny",
+          trackName = "Uploaded VCF Track",
+          vcfData = vcf_data,
+          deleteTracksOfSameName = TRUE
+        )
+      }
+    } else if (input$input_type == "url" && !is.null(input$url)) {
+      url <- input$url
+      file_type <- tools::file_ext(url)
+      
+      if (file_type == "gff3") {
+        loadGFF3TrackFromURL(
+          session = session,
+          id = "igvShiny",
+          trackName = "URL GFF3 Track",
+          gff3URL = url,
+          indexURL = NULL,
+          color = "gray",
+          colorTable = colorTable,
+          colorByAttribute = colorByAttribute,
+          displayMode = displayMode,
+          trackHeight = 50,
+          visibilityWindow = visibilityWindow,
+          deleteTracksOfSameName = TRUE
+        )
+      } else if (file_type == "bam") {
+        bamURL <- url
+        indexURL <- paste0(url, ".bai")
+        loadBamTrackFromURL(
+          session = session,
+          id = "igvShiny",
+          trackName = "URL BAM Track",
+          bamURL = bamURL,
+          indexURL = indexURL,
+          displayMode = displayMode,
+          deleteTracksOfSameName = TRUE
+        )
+      } else if (file_type == "bedgraph") {
+        loadBedGraphTrackFromURL(
+          session = session,
+          id = "igvShiny",
+          trackName = "URL BedGraph Track",
+          url = url,
+          color = "gray",
+          trackHeight = 30,
+          autoscale = TRUE,
+          deleteTracksOfSameName = TRUE
+        )
+      } else if (file_type == "vcf") {
+        loadVcfTrack(
+          session = session,
+          id = "igvShiny",
+          trackName = "URL VCF Track",
+          vcfData = readVcf(url),
+          deleteTracksOfSameName = TRUE
+        )
+      }
+    }
+  })
   
   
   ##############
   
   # Gene cart
+  
+  
   
   add_to_cart <- function(new_genes) {
     current_cart <- cart_genes()
