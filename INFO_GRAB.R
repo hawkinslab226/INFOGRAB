@@ -147,16 +147,18 @@ mycolors2 <- c(
 
 # Cite BioRender
 # Cite pcaExplorer
-# Cite JBrowseR
+# Cite IGV (https://igv.org/doc/webapp/##citing-igv)
 
 # Need to update how the data loads
 
 tissue_names <- unique(phenodata$Tissue)
 
 systems <- unique(phenodata$System)
+
 tissue_by_system <- lapply(systems, function(system) {
   unique(phenodata$Tissue[phenodata$System == system])
 })
+
 names(tissue_by_system) <- systems
 
 ##################
@@ -593,24 +595,28 @@ ui <- navbarPage(
                                "))
              ),
              fluidRow(
-               column(3, 
+               column(4, 
                       selectInput("genome_select", "Select a Genome", 
-                                  choices = c("galGal6", "GCF_016699485.2"), selected = "galGal6")
+                                  choices = c("galGal6", "GCF_016699485.2"), selected = "galGal6"),
+                      br(),
+                      textInput("genome_browser_search", "Search For a Locus or a Gene"),
+                      actionButton("search_button", "Search", class = "btn-primary")
+               ),
+               column(2, 
+                      radioButtons("input_type", "Add a Track:", 
+                                   choices = c("Local File" = "file", "URL" = "url"), 
+                                   selected = "file")
                ),
                column(4, 
-                      radioButtons("input_type", "Input Type", 
-                                   choices = c("File" = "file", "URL" = "url"), 
-                                   selected = "file"),
                       conditionalPanel(
                         condition = "input.input_type == 'file'",
-                        fileInput("file", "Add a Track (.bam, .bedgraph, .gff3, or .vcf)", width = '100%')
+                        fileInput("file", "Track File", width = '100%')
                       ),
                       conditionalPanel(
                         condition = "input.input_type == 'url'",
-                        textInput("url", "Enter URL for Track")
-                      )
-               ),
-               column(2, 
+                        textInput("url", "Track URL"),
+                        textInput("index", "Index URL")
+                      ),
                       actionButton("loadTrack", "Load Track", class = "btn-primary")
                )
              ),
@@ -2346,10 +2352,9 @@ server <- function(input, output, session) {
   
   # Genome Browser
   
-  # Create genome options for IGV
+  # Add annotation options
   
-  # Initialize IGV browser with selected genome
-  
+  # Increase max request size for large files
   options(shiny.maxRequestSize = 1024 * 1024^2)  # 1 GB
   
   # Helper function to handle list columns
@@ -2368,118 +2373,167 @@ server <- function(input, output, session) {
     })
   })
   
+  # Handle search action to navigate to a specific region in the genome
+  observeEvent(input$search_button, {
+    req(input$genome_browser_search)
+    showGenomicRegion(session = session, id = "igvShiny", region = input$genome_browser_search)
+  })
+  
   observeEvent(input$loadTrack, {
-    # Define a color table and attributes for visualization
+    # Color and display settings
     colorTable <- list("gene" = "blue")
     colorByAttribute <- "type"
     displayMode <- "EXPANDED"
     visibilityWindow <- 1000000
     
-    if (input$input_type == "file" && !is.null(input$file)) {
-      file_path <- input$file$datapath
-      file_type <- tools::file_ext(input$file$name)
+    withProgress(message = 'Loading track...', value = 0, {
+      incProgress(0.25)
       
-      # Handling different file types
-      if (file_type == "gff3") {
-        tbl.gff3 <- import(file_path, format = "gff3")
-        tbl.gff3 <- convert_lists_to_chars(as.data.frame(tbl.gff3))  # Convert list columns to character strings
-        loadGFF3TrackFromLocalData(
-          session = session,
-          id = "igvShiny",
-          trackName = "Uploaded GFF3 Track",
-          tbl.gff3 = tbl.gff3,
-          color = "gray",
-          colorTable = colorTable,
-          colorByAttribute = colorByAttribute,
-          displayMode = displayMode,
-          trackHeight = 50,
-          visibilityWindow = visibilityWindow,
-          deleteTracksOfSameName = TRUE
-        )
-      } else if (file_type == "bam") {
-        loadBamTrackFromLocalData(
-          session = session,
-          id = "igvShiny",
-          trackName = "Uploaded BAM Track",
-          bamFilePath = file_path,
-          displayMode = displayMode,
-          deleteTracksOfSameName = TRUE
-        )
-      } else if (file_type == "bedgraph") {
-        tbl.bedgraph <- import(file_path, format = "bedgraph")
-        loadBedGraphTrack(
-          session = session,
-          id = "igvShiny",
-          trackName = "Uploaded BedGraph Track",
-          tbl = tbl.bedgraph,
-          color = "gray",
-          trackHeight = 30,
-          autoscale = TRUE,
-          deleteTracksOfSameName = TRUE
-        )
-      } else if (file_type == "vcf") {
-        vcf_data <- readVcf(file_path)
-        loadVcfTrack(
-          session = session,
-          id = "igvShiny",
-          trackName = "Uploaded VCF Track",
-          vcfData = vcf_data,
-          deleteTracksOfSameName = TRUE
-        )
+      if (input$input_type == "file" && !is.null(input$file)) {
+        # Handle file input
+        file_path <- input$file$datapath
+        file_type <- tools::file_ext(input$file$name)
+        
+        tryCatch({
+          if (file_type == "gff3") {
+            tbl.gff3 <- import(file_path, format = "gff3")
+            tbl.gff3 <- convert_lists_to_chars(as.data.frame(tbl.gff3))
+            loadGFF3TrackFromLocalData(
+              session = session,
+              id = "igvShiny",
+              trackName = input$file$name,
+              tbl.gff3 = tbl.gff3,
+              color = "gray",
+              colorTable = colorTable,
+              colorByAttribute = colorByAttribute,
+              displayMode = displayMode,
+              trackHeight = 50,
+              visibilityWindow = visibilityWindow,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("GFF3 Track loaded successfully", type = "message")
+            
+          } else if (file_type == "bam") {
+            loadBamTrackFromLocalData(
+              session = session,
+              id = "igvShiny",
+              trackName = "Uploaded BAM Track",
+              bamFilePath = file_path,
+              displayMode = displayMode,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("BAM Track loaded successfully", type = "message")
+            
+          } else if (file_type == "bedgraph") {
+            tbl.bedgraph <- import(file_path, format = "bedgraph")
+            loadBedGraphTrack(
+              session = session,
+              id = "igvShiny",
+              trackName = input$file$name,
+              tbl = tbl.bedgraph,
+              color = "gray",
+              trackHeight = 30,
+              autoscale = TRUE,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("BedGraph Track loaded successfully", type = "message")
+            
+          } else if (file_type == "vcf") {
+            vcf_data <- readVcf(file_path)
+            loadVcfTrack(
+              session = session,
+              id = "igvShiny",
+              trackName = input$file$name,
+              vcfData = vcf_data,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("VCF Track loaded successfully", type = "message")
+            
+          } else {
+            showNotification("Unsupported file type", type = "error")
+          }
+          incProgress(0.75)
+          
+        }, error = function(e) {
+          showNotification(paste("Error loading track:", e$message), type = "error")
+        })
+        
+      } else if (input$input_type == "url" && !is.null(input$url)) {
+        # Handle URL input
+        url <- input$url
+        index <- input$index
+        file_type <- tools::file_ext(url)
+        
+        tryCatch({
+          if (file_type == "gff3") {
+            loadGFF3TrackFromURL(
+              session = session,
+              id = "igvShiny",
+              trackName = "URL GFF3 Track",
+              gff3URL = url,
+              indexURL = index,
+              color = "gray",
+              colorTable = colorTable,
+              colorByAttribute = colorByAttribute,
+              displayMode = displayMode,
+              trackHeight = 50,
+              visibilityWindow = visibilityWindow,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("GFF3 Track from URL loaded successfully", type = "message")
+            
+          } else if (file_type == "bam") {
+            bamURL <- url
+            loadBamTrackFromURL(
+              session = session,
+              id = "igvShiny",
+              trackName = "URL BAM Track",
+              bamURL = bamURL,
+              indexURL = index,
+              displayMode = displayMode,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("BAM Track from URL loaded successfully", type = "message")
+            
+          } else if (file_type == "bedgraph") {
+            loadBedGraphTrackFromURL(
+              session = session,
+              id = "igvShiny",
+              trackName = "URL BedGraph Track",
+              url = url,
+              color = "gray",
+              trackHeight = 30,
+              autoscale = TRUE,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("BedGraph Track from URL loaded successfully", type = "message")
+            
+          } else if (file_type == "vcf") {
+            vcf_data <- readVcf(url)
+            loadVcfTrack(
+              session = session,
+              id = "igvShiny",
+              trackName = "URL VCF Track",
+              vcfData = vcf_data,
+              deleteTracksOfSameName = TRUE
+            )
+            showNotification("VCF Track from URL loaded successfully", type = "message")
+            
+          } else {
+            showNotification("Unsupported URL file type", type = "error")
+          }
+          incProgress(0.75)
+          
+        }, error = function(e) {
+          showNotification(paste("Error loading track from URL:", e$message), type = "error")
+        })
+      } else {
+        showNotification("No file or URL provided", type = "warning")
       }
-    } else if (input$input_type == "url" && !is.null(input$url)) {
-      url <- input$url
-      file_type <- tools::file_ext(url)
-      
-      if (file_type == "gff3") {
-        loadGFF3TrackFromURL(
-          session = session,
-          id = "igvShiny",
-          trackName = "URL GFF3 Track",
-          gff3URL = url,
-          indexURL = NULL,
-          color = "gray",
-          colorTable = colorTable,
-          colorByAttribute = colorByAttribute,
-          displayMode = displayMode,
-          trackHeight = 50,
-          visibilityWindow = visibilityWindow,
-          deleteTracksOfSameName = TRUE
-        )
-      } else if (file_type == "bam") {
-        bamURL <- url
-        indexURL <- paste0(url, ".bai")
-        loadBamTrackFromURL(
-          session = session,
-          id = "igvShiny",
-          trackName = "URL BAM Track",
-          bamURL = bamURL,
-          indexURL = indexURL,
-          displayMode = displayMode,
-          deleteTracksOfSameName = TRUE
-        )
-      } else if (file_type == "bedgraph") {
-        loadBedGraphTrackFromURL(
-          session = session,
-          id = "igvShiny",
-          trackName = "URL BedGraph Track",
-          url = url,
-          color = "gray",
-          trackHeight = 30,
-          autoscale = TRUE,
-          deleteTracksOfSameName = TRUE
-        )
-      } else if (file_type == "vcf") {
-        loadVcfTrack(
-          session = session,
-          id = "igvShiny",
-          trackName = "URL VCF Track",
-          vcfData = readVcf(url),
-          deleteTracksOfSameName = TRUE
-        )
-      }
-    }
+    })
   })
+  
+  
   
   
   ##############
