@@ -46,4 +46,5 @@ Imports:
     devtools,
     stringr,
     igvShiny,
-    BiocManager
+    BiocManager,
+    VariantAnnotation
