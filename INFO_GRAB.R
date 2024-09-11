@@ -3,46 +3,45 @@
 
 required_packages <- c(
   "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
-  "ggplot2", "pheatmap", "dplyr", "readr", "readxl", 
-  "pheatmap", "DT", "stringr", "purrr", "tibble", "reshape2", 
+  "ggplot2", "pheatmap", "dplyr", "readr", "readxl", "DT", "stringr", "purrr", "tibble", "reshape2", 
   "RColorBrewer", "gplots", "scales", "data.table", "gridExtra", 
   "plotly", "lubridate", "shinyjs", "shinydashboard", 
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
   "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", 
   "igraph", "seriation", "GGally", "knitr", "devtools", "stringr",
-  "BiocManager"
+  "BiocManager", "VariantAnnotation"
 )
 
 install_if_missing <- function(pkg) {
   if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
   }
-  }
+}
 
 lapply(required_packages, install_if_missing)
 
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager")
   BiocManager::install("VariantAnnotation", force = TRUE)
-  }
+}
 
 if (!require(DESeq2)) {
   BiocManager::install("DESeq2", force = TRUE)
-  }
+}
 
 if (!require(pcaExplorer)) {
   BiocManager::install("pcaExplorer", force = TRUE)
-  }
+}
 
 if (!require(rtracklayer)) {
   install.packages("https://cran.r-project.org/src/contrib/Archive/rjson/rjson_0.2.20.tar.gz", repos = NULL, type = "source")
   BiocManager::install("rtracklayer", force = TRUE)
-  }
+}
 
 if (!require(tispec)) {
   library(devtools)
   install_github('roonysgalbi/tispec')
-  }
+}
 
 if (!require(igvShiny)) {
   library(devtools)
@@ -151,6 +150,23 @@ mycolors2 <- c(
 
 # Need to update how the data loads
 
+# Specify the path to your VCF file
+vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf"
+
+# Read the VCF file using the "galGal6" genome build
+vcf_data <- readVcf(vcf_file, "galGal6")
+
+# View the structure of the VCF object
+print(vcf_data)
+
+# Extract the fixed fields such as REF, ALT, QUAL, etc.
+fixed_fields <- fixed(vcf_data)
+head(fixed_fields)  # View the first few rows of fixed fields
+
+# Extract the INFO fields for additional information
+info_fields <- info(vcf_data)
+head(info_fields)  # View the first few rows of info fields
+
 tissue_names <- unique(phenodata$Tissue)
 
 systems <- unique(phenodata$System)
@@ -175,6 +191,11 @@ ui <- navbarPage(
         href = "https://www.westernu.edu",
         target = "_blank",
         tags$img(src = "WesternU_logo.png", height = "60px", style = "padding: 5px; margin-top: -19px;")
+      ),
+      tags$a(
+        href = "https://www.hawkinslab.org",
+        target = "_blank",
+        tags$img(src = "hawkins_lab.png", height = "60px", style = "padding: 5px; margin-top: -19px;")
       )
       
     )
@@ -454,6 +475,7 @@ ui <- navbarPage(
                           actionButton("random_gene_barplot", "Search 5 Random Genes"),
                           actionButton("clear_search_gene_barplot", "Clear"),
                           actionButton("add_to_cart_barplot", "Add to Gene Cart"),
+                          actionButton("transfer_to_heatmap", "Show Heatmap of Searched Genes"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           downloadButton("download_barplot", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
@@ -585,29 +607,45 @@ ui <- navbarPage(
   
   tabPanel("Genome Browser",
            fluidPage(
+             # Custom CSS to adjust margins and layout
              tags$head(
-               tags$style(HTML(".shiny-input-container {
-               margin-bottom: 0px; /* Remove bottom margin */
-               }
-               .btn-primary {
-               margin-top: 24px; /* Align button with the input fields */
-               }
-                               "))
+               tags$style(HTML("
+                     .shiny-input-container {
+                       margin-bottom: 0px; /* Remove bottom margin */
+                     }
+                     .btn-primary {
+                       margin-top: 24px; /* Align button with input fields */
+                       width: 40%; 
+                     }
+                     #loadTrack, #load_geneASE_track, #load_snp {
+                       width: 40%; 
+                     }
+                     .action-button {
+                       margin-top: 5px;
+                     }
+                   "))
              ),
+             
              fluidRow(
-               column(4, 
-                      selectInput("genome_select", "Select a Genome", 
-                                  choices = c("galGal6", "GCF_016699485.2"), selected = "galGal6"),
+               # Column for Genome Selection and Locus Search
+               column(4,
+                      selectInput("genome_select", "Select a Genome",
+                                  choices = c("galGal6"), selected = "galGal6"),
                       br(),
                       textInput("genome_browser_search", "Search For a Locus or a Gene"),
                       actionButton("search_button", "Search", class = "btn-primary")
                ),
-               column(2, 
-                      radioButtons("input_type", "Add a Track:", 
-                                   choices = c("Local File" = "file", "URL" = "url"), 
+               
+               # Column for track type (Local or URL)
+               column(2,
+                      radioButtons("input_type", "Add a Track:",
+                                   choices = c("Local File" = "file", "URL" = "url"),
                                    selected = "file")
                ),
-               column(4, 
+               
+               # Column for track file input and action buttons
+               column(4,
+                      # Conditional panels for file input or URL input
                       conditionalPanel(
                         condition = "input.input_type == 'file'",
                         fileInput("file", "Track File", width = '100%')
@@ -617,12 +655,17 @@ ui <- navbarPage(
                         textInput("url", "Track URL"),
                         textInput("index", "Index URL")
                       ),
-                      actionButton("loadTrack", "Load Track", class = "btn-primary")
+                      actionButton("loadTrack", "Load Custom Track", class = "btn-primary"),
+                      actionButton("load_geneASE_track", "Load Gene ASE Track", class = "action-button"),
+                      actionButton("load_snp", "Load SNP ASE Track", class = "action-button")
                )
              ),
+             
              br(),
+             
+             # IGV Genome Browser output
              fluidRow(
-               column(12, 
+               column(12,
                       igvShinyOutput("igvShiny", height = "600px")
                )
              )
@@ -632,7 +675,8 @@ ui <- navbarPage(
   
   
   
-  tabPanel("Gene Checkout", 
+  
+  tabPanel("Gene Cart", 
            sidebarLayout(
              sidebarPanel(
                tags$textarea(id = "gene_text_area", style = "position: absolute; left: -9999px;"),
@@ -661,12 +705,35 @@ ui <- navbarPage(
   
   tabPanel("About",
            fluidPage(
-             h2("App Version and Credits"),
-             p("Version: 1.0.0"),
-             tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank"),
-             p("Developed by: Oliver Brown (ombrown@uw.edu)"),
+             h2("App Version and Information"),
+             tabsetPanel(
+               tabPanel("Version",
+                        br(),
+                        p("Version: 1.0.0"),
+                        p("Developed by: Oliver Brown (ombrown@uw.edu)"),
+                        tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank")
+               ),
+               tabPanel("Credits",
+                        h4("Acknowledgments:"),
+                        br(),
+                        h4("Citations:"),
+                        br(),
+                        h6("IGV:"),
+                        tags$ul(
+                          tags$li("Robinson JT, Thorvaldsdóttir H, Winckler W, et al. Integrative Genomics Viewer. *Nature Biotechnology* 29, 24–26 (2011)."),
+                          tags$li("Thorvaldsdóttir H, Robinson JT, Mesirov JP. Integrative Genomics Viewer (IGV): high-performance genomics data visualization and exploration. *Briefings in Bioinformatics* 14, 178–192 (2013)."),
+                          tags$li("Robinson JT, Thorvaldsdóttir H, Wenger AM, et al. Variant Review with the Integrative Genomics Viewer (IGV). *Cancer Research* 77(21):31-34 (2017)."),
+                          tags$li("Robinson JT, Thorvaldsdóttir H, Turner D, Mesirov JP. igv.js: an embeddable JavaScript implementation of the Integrative Genomics Viewer (IGV). *Bioinformatics* 39(1), btac830 (2023).")
+                        ),
+                        br(),
+                        h6("BioRender:"),
+                        br(),
+                        h6("pcaExplorer:")
+               )
+             )
            )
   )
+  
 )
 
 ##########
@@ -1068,7 +1135,7 @@ server <- function(input, output, session) {
       mutate(FalseDiscoveryRate = format(padj, scientific = T, digits = input$num_of_digits), 
              log2FoldChange = format(log2FoldChange, scientific = T, digits = input$num_of_digits)) %>%
       head(10) %>%
-      select(Gene, log2FoldChange, FalseDiscoveryRate)
+      dplyr::select(Gene, log2FoldChange, FalseDiscoveryRate)
     
     datatable(largest_fc, options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE)
   })
@@ -1104,7 +1171,7 @@ server <- function(input, output, session) {
       mutate(FalseDiscoveryRate = format(padj, scientific = T, digits = input$num_of_digits), 
              log2FoldChange = format(log2FoldChange, scientific = T, digits = input$num_of_digits)) %>%
       head(10) %>%
-      select(Gene, log2FoldChange, FalseDiscoveryRate)
+      dplyr::select(Gene, log2FoldChange, FalseDiscoveryRate)
     
     datatable(downregulated, options = list(dom = 't', paging = FALSE, ordering = FALSE), rownames = FALSE)
   })
@@ -1558,7 +1625,7 @@ server <- function(input, output, session) {
       color = colorRampPalette(color_scale)(100),
       legend_labels = c("low", "medium", "high"),
       cutree_cols = 2,
-      cutree_rows = if (n_genes > 1) 2 else 1,
+      cutree_rows = 1,
       angle_col = 45,
       fontsize = 13,
       fontsize_col = 14,
@@ -1935,6 +2002,8 @@ server <- function(input, output, session) {
   
   ### barplots
   
+  # Add a button that takes the genes and brings them to the heatmap tab
+  
   barplot_data <- reactiveVal(NULL)
   current_plot <- reactiveVal(NULL)
   
@@ -1967,14 +2036,14 @@ server <- function(input, output, session) {
   
   observeEvent(input$differential_analysis_tab, {
     if (input$differential_analysis_tab == "Gene Expression Chart") {
-
+      
       req(input$tissue_select1, input$tissue_select2)
       
       top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
       
       updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
       updateBarplotData(top_genes)
-
+      
       current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
     }
   })
@@ -2100,7 +2169,7 @@ server <- function(input, output, session) {
           panel.background = element_blank(),
           strip.text = element_text(size = 14, face = "bold"),
           legend.position = "none"
-          ) +
+        ) +
         scale_fill_manual(values = mycolors1) +
         labs(y = "Average Expression (Avg. RPKM)", x = "Tissue")
       
@@ -2108,7 +2177,7 @@ server <- function(input, output, session) {
       print(p)
     })
   }
-
+  
   output$download_barplot <- downloadHandler(
     filename = function() {
       paste("Barplot", ".png", sep = "")
@@ -2124,6 +2193,120 @@ server <- function(input, output, session) {
     
     showNotification("genes added to the cart.", type = "message")
   })
+
+  observeEvent(input$transfer_to_heatmap, {
+    # Capture the genes being transferred from the barplot
+    transferred_genes <- strsplit(input$barplot_searched_gene, ",\\s*")[[1]]
+    transferred_genes <- toupper(transferred_genes)
+    
+    # Subset RPKM data based on these transferred genes
+    rpkm_filtered <- RPKM_data %>%
+      filter(rownames(.) %in% transferred_genes)
+    
+    # Get all the samples for all tissues
+    samples <- phenodata %>%
+      pull(Sample_name)
+    
+    samples <- samples[samples %in% colnames(rpkm_filtered)]
+    
+    # Filter the RPKM data by these samples
+    rpkm_filtered <- rpkm_filtered[, samples, drop = FALSE]
+    
+    colnames(rpkm_filtered) <- gsub("Sample_", "", colnames(rpkm_filtered))
+    
+    # Generate the annotation based on all tissues
+    annotation <- phenodata %>%
+      filter(Sample_name %in% samples) %>%
+      dplyr::select(Sample_name, Tissue) %>%
+      mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
+      column_to_rownames(var = "Sample_name")
+    
+    # Ensure annotation colors align with tissues
+    present_tissues <- unique(annotation$Tissue)
+    annotation_colors <- list(Tissue = mycolors1[present_tissues])
+    
+    # Sort the samples to ensure tissue sample pairs are next to each other
+    sorted_samples <- annotation %>%
+      arrange(Tissue) %>%
+      rownames()
+    
+    rpkm_filtered <- rpkm_filtered[, sorted_samples]
+    
+    # Determine cell height based on number of genes
+    num_genes <- length(transferred_genes)
+    cell_height <- ifelse(num_genes > 10, 30, ifelse(num_genes > 5, 45, 100))
+    
+    # Heatmap generation
+    showModal(
+      modalDialog(
+        title = "Gene Heatmap for Transferred Genes",
+        size = "l",  # This will make the modal larger
+        plotOutput("heatmap_in_modal", width = "100%", height = "750px"),
+        downloadButton("download_modal_heatmap", "Download Heatmap"),
+        easyClose = TRUE,
+        footer = modalButton("Close"),
+        tags$style(".modal-dialog { width: 80%; }")
+      )
+    )
+    
+    output$heatmap_in_modal <- renderPlot({
+      # Generate the heatmap
+      pheatmap(
+        rpkm_filtered,
+        scale = "row",
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        show_rownames = TRUE,
+        show_colnames = TRUE,
+        annotation_col = annotation,
+        annotation_colors = annotation_colors,
+        color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  # Example of color scale
+        legend_labels = c("low", "medium", "high"),
+        fontsize_col = 11,
+        fontsize_row = 12,
+        angle_col = 45,
+        treeheight_row = 0,
+        treeheight_col = 0,
+        cellwidth = 23,
+        cellheight = cell_height
+      )
+    })
+    
+    # Add the download handler for the heatmap
+    output$download_modal_heatmap <- downloadHandler(
+      filename = function() {
+        paste("heatmap", ".png", sep = "")
+      },
+      content = function(file) {
+        # Save the heatmap as a PNG file
+        png(file, width = 15, height = 10, units = "in", res = 300)
+        pheatmap(
+          rpkm_filtered,
+          scale = "row",
+          cluster_rows = TRUE,
+          cluster_cols = FALSE,  # Prevent clustering of columns to keep pairs together
+          show_rownames = TRUE,
+          show_colnames = TRUE,
+          annotation_col = annotation,
+          annotation_colors = annotation_colors,
+          color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  # Example of color scale
+          legend_labels = c("low", "medium", "high"),
+          fontsize = 10,
+          angle_col = 45,
+          treeheight_row = 0,
+          treeheight_col = 0,
+          cellwidth = 17,
+          cellheight = cell_height
+        )
+        dev.off()
+      }
+    )
+  })
+  
+  
+  
+  
+  
   
   
   ##########################
@@ -2533,7 +2716,140 @@ server <- function(input, output, session) {
     })
   })
   
+  observeEvent(input$load_geneASE_track, {
+    gene_ase_path <- "browser_data_for_app/gene_ase_converted_cleaned_with_strand.bed"
+    chrom_map_path <- "browser_data_for_app/chrm-ncbi.txt"
+    
+    if (file.exists(gene_ase_path) && file.exists(chrom_map_path)) {
+      withProgress(message = 'Loading Gene ASE Track...', value = 0, {
+        tryCatch({
+          # Load the chromosome mapping file
+          chrom_map <- read_tsv(chrom_map_path, col_names = c("Chrm_ncbi", "Chromosome"))
+          
+          # Load Gene ASE data
+          gene_ase_data <- import(gene_ase_path, format = "bed")
+          gene_ase_df <- as.data.frame(gene_ase_data)
+          
+          # Rename the seqnames column to 'chr' for compatibility
+          colnames(gene_ase_df)[colnames(gene_ase_df) == "seqnames"] <- "chr"
+          
+          # Merge chromosome mapping with Gene ASE data
+          gene_ase_df <- gene_ase_df %>%
+            left_join(chrom_map, by = c("chr" = "Chrm_ncbi")) %>%
+            mutate(chr = Chromosome) %>%
+            dplyr::select(-Chromosome)
+          
+          # Replace '*' with a default strand, e.g., '+'
+          gene_ase_df <- gene_ase_df %>%
+            mutate(strand = ifelse(strand == "*", "+", strand))
+          
+          # Load the track using the updated chromosome mapping
+          loadBedTrack(
+            session = session,
+            id = "igvShiny",
+            trackName = "Gene ASE Track",
+            tbl = gene_ase_df,
+            color = "blue",
+            trackHeight = 50,
+            deleteTracksOfSameName = TRUE
+          )
+          
+          incProgress(0.5)
+          
+        }, error = function(e) {
+          showNotification(paste("Error loading Gene ASE Track:", e$message), type = "error")
+        })
+      })
+    }
+  })
   
+  observeEvent(input$load_snp, {
+    
+    # Show a warning notification that loading may take a few minutes
+    showNotification("Loading may take a few minutes", type = "warning", duration = NULL)
+    
+    # Add a progress bar to indicate the loading process
+    withProgress(message = 'Loading VCF file...', value = 0, {
+      
+      # Add a debug message before starting
+      print("Loading VCF file...")  # Console output for debugging
+      
+      # Specify the path to the VCF file
+      vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf"  # Replace with your actual path
+      
+      # Check if the file exists
+      if (file.exists(vcf_file)) {
+        print("VCF file found.")
+        showNotification("VCF file found.", type = "message")
+      } else {
+        print("VCF file not found.")
+        showNotification("VCF file not found.", type = "error")
+        return(NULL)  # Stop execution if the file is not found
+      }
+      
+      # Increment progress bar
+      incProgress(0.2)
+      
+      # Read the VCF file
+      tryCatch({
+        vcf_data <- readVcf(vcf_file, "galGal6")
+        print("VCF file loaded successfully.")
+        showNotification("VCF file loaded successfully.", type = "message")
+      }, error = function(e) {
+        print(paste("Error reading VCF file:", e$message))
+        showNotification(paste("Error reading VCF file:", e$message), type = "error")
+        return(NULL)
+      })
+      
+      # Increment progress bar
+      incProgress(0.4)
+      
+      # Extract relevant fields: CHROM, POS, REF, ALT
+      tryCatch({
+        snp_data <- rowRanges(vcf_data)
+        fixed_fields <- as.data.frame(fixed(vcf_data))  # Extract REF, ALT
+        snp_df <- data.frame(
+          chr = as.character(seqnames(snp_data)),
+          start = start(snp_data),
+          end = end(snp_data),
+          REF = fixed_fields$REF,
+          ALT = sapply(fixed_fields$ALT, function(x) paste(x, collapse = ","))
+        )
+        print("SNP data extracted successfully.")
+        showNotification("SNP data extracted successfully.", type = "message")
+      }, error = function(e) {
+        print(paste("Error extracting SNP data:", e$message))
+        showNotification(paste("Error extracting SNP data:", e$message), type = "error")
+        return(NULL)
+      })
+      
+      # Increment progress bar
+      incProgress(0.6)
+      
+      # Load the track into IGV
+      tryCatch({
+        loadBedTrack(
+          session = session,
+          id = "igvShiny",
+          trackName = "SNP ASE Track",
+          tbl = snp_df,
+          color = "darkgreen",
+          trackHeight = 50,
+          deleteTracksOfSameName = TRUE
+        )
+        print("Track loaded successfully.")
+        showNotification("Track loaded successfully.", type = "message")
+      }, error = function(e) {
+        print(paste("Error loading track into IGV:", e$message))
+        showNotification(paste("Error loading track into IGV:", e$message), type = "error")
+      })
+      
+      # Increment progress bar to finish
+      incProgress(1)
+      
+    })
+    
+  })
   
   
   ##############
