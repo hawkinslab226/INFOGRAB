@@ -150,22 +150,23 @@ mycolors2 <- c(
 
 # Need to update how the data loads
 
-# Specify the path to your VCF file
-vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf"
+chrom_map <- read_tsv("browser_data_for_app/chrm-ncbi.txt", col_names = c("Chrm_ncbi", "Chromosome"))
 
-# Read the VCF file using the "galGal6" genome build
-vcf_data <- readVcf(vcf_file, "galGal6")
+# Load the GFF file and fix chromosome names
+gff_file <- "browser_data_for_app/genomeAnnoatation_gallus.updated.gff"
+gff_data <- import(gff_file, format = "gff")
+gff_df <- as.data.frame(gff_data)
 
-# View the structure of the VCF object
-print(vcf_data)
+# Rename the seqnames column to 'chr' for compatibility
+colnames(gff_df)[colnames(gff_df) == "seqnames"] <- "chr"
 
-# Extract the fixed fields such as REF, ALT, QUAL, etc.
-fixed_fields <- fixed(vcf_data)
-head(fixed_fields)  # View the first few rows of fixed fields
+# Merge chromosome mapping with GFF data
+gff_df <- gff_df %>%
+  left_join(chrom_map, by = c("chr" = "Chrm_ncbi")) %>%
+  mutate(chr = Chromosome) %>%
+  dplyr::select(-Chromosome)
 
-# Extract the INFO fields for additional information
-info_fields <- info(vcf_data)
-head(info_fields)  # View the first few rows of info fields
+
 
 tissue_names <- unique(phenodata$Tissue)
 
@@ -570,7 +571,8 @@ ui <- navbarPage(
              tabPanel("Heatmap",
                       sidebarLayout(
                         sidebarPanel(
-                          selectInput("n_variable_genes", "Number of most variable genes", choices = c(50, 100, 500, 1000), selected = 500),
+                          
+                          selectInput("n_variable_genes", "Number of Genes (Ordered by Variance)", choices = c(50, 100, 500, 1000), selected = 500),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           checkboxGroupInput("system_choice", "Select System(s):",
                                              choices = c("All Systems", unique(phenodata$System)),
@@ -617,7 +619,7 @@ ui <- navbarPage(
                        margin-top: 24px; /* Align button with input fields */
                        width: 40%; 
                      }
-                     #loadTrack, #load_geneASE_track, #load_snp {
+                     #loadTrack, #load_geneASE_track, #load_snp, #load_gff {
                        width: 40%; 
                      }
                      .action-button {
@@ -638,12 +640,11 @@ ui <- navbarPage(
                
                # Column for track type (Local or URL)
                column(2,
-                      radioButtons("input_type", "Add a Track:",
+                      radioButtons("input_type", "Add a Track (GFF3, BAM, BED, or VCF):",
                                    choices = c("Local File" = "file", "URL" = "url"),
                                    selected = "file")
                ),
                
-               # Column for track file input and action buttons
                column(4,
                       # Conditional panels for file input or URL input
                       conditionalPanel(
@@ -656,8 +657,9 @@ ui <- navbarPage(
                         textInput("index", "Index URL")
                       ),
                       actionButton("loadTrack", "Load Custom Track", class = "btn-primary"),
+                      actionButton("load_gff", "Load Annotation Track"),
                       actionButton("load_geneASE_track", "Load Gene ASE Track", class = "action-button"),
-                      actionButton("load_snp", "Load SNP ASE Track", class = "action-button")
+                      actionButton("load_snp", "Load SNP ASE Track", class = "action-button"),
                )
              ),
              
@@ -666,7 +668,7 @@ ui <- navbarPage(
              # IGV Genome Browser output
              fluidRow(
                column(12,
-                      igvShinyOutput("igvShiny", height = "600px")
+                      igvShinyOutput("igvShiny", height = "1000px")
                )
              )
            )
@@ -1674,7 +1676,7 @@ server <- function(input, output, session) {
       # Show modal with the selected genes and add to cart button
       showModal(modalDialog(
         title = "Selected Genes",
-        paste("You have selected:", paste(selected_rows, collapse = ", ")),
+        paste(paste(selected_rows, collapse = ", ")),
         footer = tagList(
           actionButton("add_to_cart_tissue_specific_modal", "Add to Gene Cart"),
           modalButton("Close")
@@ -2214,32 +2216,29 @@ server <- function(input, output, session) {
     
     colnames(rpkm_filtered) <- gsub("Sample_", "", colnames(rpkm_filtered))
     
-    # Generate the annotation based on all tissues
     annotation <- phenodata %>%
       filter(Sample_name %in% samples) %>%
       dplyr::select(Sample_name, Tissue) %>%
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
-    # Ensure annotation colors align with tissues
     present_tissues <- unique(annotation$Tissue)
     annotation_colors <- list(Tissue = mycolors1[present_tissues])
     
-    # Sort the samples to ensure tissue sample pairs are next to each other
     sorted_samples <- annotation %>%
       arrange(Tissue) %>%
       rownames()
     
     rpkm_filtered <- rpkm_filtered[, sorted_samples]
     
-    # Determine cell height based on number of genes
     num_genes <- length(transferred_genes)
-    cell_height <- ifelse(num_genes > 10, 30, ifelse(num_genes > 5, 45, 100))
+    cell_height <- ifelse(num_genes > 50, 5, ifelse(num_genes > 30, 8, ifelse(num_genes > 20, 15, ifelse(num_genes > 10, 25, ifelse(num_genes > 5, 50, 100)))))
+    labels <- num_genes <= 30
     
     # Heatmap generation
     showModal(
       modalDialog(
-        title = "Gene Heatmap for Transferred Genes",
+        title = "Gene Expression Heatmap for Searched Genes",
         size = "l",  # This will make the modal larger
         plotOutput("heatmap_in_modal", width = "100%", height = "750px"),
         downloadButton("download_modal_heatmap", "Download Heatmap"),
@@ -2250,7 +2249,7 @@ server <- function(input, output, session) {
     )
     
     output$heatmap_in_modal <- renderPlot({
-      # Generate the heatmap
+
       pheatmap(
         rpkm_filtered,
         scale = "row",
@@ -2268,7 +2267,6 @@ server <- function(input, output, session) {
         treeheight_row = 0,
         treeheight_col = 0,
         cellwidth = 23,
-        cellheight = cell_height
       )
     })
     
@@ -2363,12 +2361,6 @@ server <- function(input, output, session) {
     
     colnames(rpkm_filtered) <- gsub("Sample_", "", colnames(rpkm_filtered))
     
-    annotation <- phenodata %>%
-      filter(Sample_name %in% samples) %>%
-      dplyr::select(Sample_name, Tissue) %>%
-      mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
-      column_to_rownames(var = "Sample_name")
-    
     tau_scores <- calcTau(rpkm_filtered)
     
     filtered_tau <- tau_scores[tau_scores$tau >= 0.8, ]
@@ -2377,9 +2369,10 @@ server <- function(input, output, session) {
     rpkm_tau <- as.matrix(rpkm_filtered)
     
     variances <- apply(t(rpkm_tau), 2, var)
+
+      top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
+      rpkm_heatmap <- rpkm_tau[top_genes, ]
     
-    top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
-    rpkm_heatmap <- rpkm_tau[top_genes,]
     
     annotation <- phenodata %>%
       filter(Sample_name %in% samples) %>%
@@ -2473,7 +2466,7 @@ server <- function(input, output, session) {
       # Show modal with the selected genes and add to cart button
       showModal(modalDialog(
         title = "Selected Genes",
-        paste("You have selected:", paste(selected_rows, collapse = ", ")),
+        paste(paste(selected_rows, collapse = ", ")),
         footer = tagList(
           actionButton("add_to_cart_tissue_specific_modal", "Add to Gene Cart"),
           modalButton("Close")
@@ -2562,6 +2555,9 @@ server <- function(input, output, session) {
     showGenomicRegion(session = session, id = "igvShiny", region = input$genome_browser_search)
   })
   
+  
+# NEED TO FIX FILE UPLOADING
+  
   observeEvent(input$loadTrack, {
     # Color and display settings
     colorTable <- list("gene" = "blue")
@@ -2573,13 +2569,13 @@ server <- function(input, output, session) {
       incProgress(0.25)
       
       if (input$input_type == "file" && !is.null(input$file)) {
-        # Handle file input
         file_path <- input$file$datapath
         file_type <- tools::file_ext(input$file$name)
         
         tryCatch({
           if (file_type == "gff3") {
-            tbl.gff3 <- import(file_path, format = "gff3")
+            # Import GFF3 using rtracklayer
+            tbl.gff3 <- rtracklayer::import(file_path, format = "gff3")
             tbl.gff3 <- convert_lists_to_chars(as.data.frame(tbl.gff3))
             loadGFF3TrackFromLocalData(
               session = session,
@@ -2597,32 +2593,39 @@ server <- function(input, output, session) {
             showNotification("GFF3 Track loaded successfully", type = "message")
             
           } else if (file_type == "bam") {
+            # Import BAM using Rsamtools
+            bamFile <- Rsamtools::BamFile(file_path)
             loadBamTrackFromLocalData(
               session = session,
               id = "igvShiny",
               trackName = "Uploaded BAM Track",
-              bamFilePath = file_path,
+              bamFile = bamFile,
+              color = "grey",
+              trackHeight = 50,
               displayMode = displayMode,
               deleteTracksOfSameName = TRUE
             )
             showNotification("BAM Track loaded successfully", type = "message")
             
-          } else if (file_type == "bedgraph") {
-            tbl.bedgraph <- import(file_path, format = "bedgraph")
-            loadBedGraphTrack(
+          } else if (file_type == "bed") {
+            # Import BED using rtracklayer
+            tbl.bed <- rtracklayer::import(file_path, format = "bed")
+            tbl.bed <- convert_lists_to_chars(as.data.frame(tbl.bed))
+            loadBedTrack(
               session = session,
               id = "igvShiny",
               trackName = input$file$name,
-              tbl = tbl.bedgraph,
+              tbl = tbl.bed,
               color = "gray",
-              trackHeight = 30,
+              trackHeight = 50,
               autoscale = TRUE,
               deleteTracksOfSameName = TRUE
             )
-            showNotification("BedGraph Track loaded successfully", type = "message")
+            showNotification("BED Track loaded successfully", type = "message")
             
           } else if (file_type == "vcf") {
-            vcf_data <- readVcf(file_path)
+            # Import VCF using VariantAnnotation
+            vcf_data <- VariantAnnotation::readVcf(file_path)
             loadVcfTrack(
               session = session,
               id = "igvShiny",
@@ -2642,9 +2645,7 @@ server <- function(input, output, session) {
         })
         
       } else if (input$input_type == "url" && !is.null(input$url)) {
-        # Handle URL input
         url <- input$url
-        index <- input$index
         file_type <- tools::file_ext(url)
         
         tryCatch({
@@ -2654,7 +2655,6 @@ server <- function(input, output, session) {
               id = "igvShiny",
               trackName = "URL GFF3 Track",
               gff3URL = url,
-              indexURL = index,
               color = "gray",
               colorTable = colorTable,
               colorByAttribute = colorByAttribute,
@@ -2666,33 +2666,30 @@ server <- function(input, output, session) {
             showNotification("GFF3 Track from URL loaded successfully", type = "message")
             
           } else if (file_type == "bam") {
-            bamURL <- url
             loadBamTrackFromURL(
               session = session,
               id = "igvShiny",
               trackName = "URL BAM Track",
-              bamURL = bamURL,
-              indexURL = index,
+              bamURL = url,
               displayMode = displayMode,
               deleteTracksOfSameName = TRUE
             )
             showNotification("BAM Track from URL loaded successfully", type = "message")
             
-          } else if (file_type == "bedgraph") {
-            loadBedGraphTrackFromURL(
+          } else if (file_type == "bed") {
+            loadBedTrackFromURL(
               session = session,
               id = "igvShiny",
-              trackName = "URL BedGraph Track",
+              trackName = "URL BED Track",
               url = url,
               color = "gray",
-              trackHeight = 30,
-              autoscale = TRUE,
+              trackHeight = 50,
               deleteTracksOfSameName = TRUE
             )
-            showNotification("BedGraph Track from URL loaded successfully", type = "message")
+            showNotification("BED Track from URL loaded successfully", type = "message")
             
           } else if (file_type == "vcf") {
-            vcf_data <- readVcf(url)
+            vcf_data <- VariantAnnotation::readVcf(url)
             loadVcfTrack(
               session = session,
               id = "igvShiny",
@@ -2710,11 +2707,15 @@ server <- function(input, output, session) {
         }, error = function(e) {
           showNotification(paste("Error loading track from URL:", e$message), type = "error")
         })
+        
       } else {
         showNotification("No file or URL provided", type = "warning")
       }
+      
+      incProgress(1)
     })
   })
+  
   
   observeEvent(input$load_geneASE_track, {
     gene_ase_path <- "browser_data_for_app/gene_ase_converted_cleaned_with_strand.bed"
@@ -2750,7 +2751,7 @@ server <- function(input, output, session) {
             trackName = "Gene ASE Track",
             tbl = gene_ase_df,
             color = "blue",
-            trackHeight = 50,
+            trackHeight = 70,
             deleteTracksOfSameName = TRUE
           )
           
@@ -2775,7 +2776,7 @@ server <- function(input, output, session) {
       print("Loading VCF file...")  # Console output for debugging
       
       # Specify the path to the VCF file
-      vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf"  # Replace with your actual path
+      vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf" 
       
       # Check if the file exists
       if (file.exists(vcf_file)) {
@@ -2834,7 +2835,7 @@ server <- function(input, output, session) {
           trackName = "SNP ASE Track",
           tbl = snp_df,
           color = "darkgreen",
-          trackHeight = 50,
+          trackHeight = 70,
           deleteTracksOfSameName = TRUE
         )
         print("Track loaded successfully.")
@@ -2849,6 +2850,39 @@ server <- function(input, output, session) {
       
     })
     
+  })
+  
+  # Event handler for loading the GFF track when the button is pressed
+  observeEvent(input$load_gff, {
+    
+    withProgress(message = 'Loading GFF Track...', value = 0, {
+      incProgress(0.2)
+      
+      tryCatch({
+        # Check if the GFF data is valid
+        if (!is.null(gff_df) && nrow(gff_df) > 0) {
+          
+          incProgress(0.5)
+          
+          # Load the track into IGV
+          loadBedTrack(
+            session = session,
+            id = "igvShiny",
+            trackName = "Annotation Track",
+            tbl = gff_df,
+            color = "darkred",
+            trackHeight = 70,
+            deleteTracksOfSameName = TRUE
+          )
+          
+          incProgress(1)
+        } else {
+          showNotification("Error: No data to load.", type = "error")
+        }
+      }, error = function(e) {
+        showNotification(paste("Error loading GFF Track:", e$message), type = "error")
+      })
+    })
   })
   
   
