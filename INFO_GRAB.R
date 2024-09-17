@@ -365,8 +365,7 @@ ui <- navbarPage(
                       sidebarLayout(
                         sidebarPanel(
                           textInput("searched_gene_volcano", "Search for gene:", width = '600px'),
-                          actionButton("search_gene_volcano", "Search"),
-                          actionButton("add_to_cart_volcano", "Add to Gene Cart"),
+                          actionButton("search_gene_volcano", "Search for gene(s): (comma-separated)"),
                           actionButton("clear_search_gene_volcano", "Clear"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                         
@@ -397,10 +396,6 @@ ui <- navbarPage(
 
                           actionButton("add_labeled_genes", "Add Labeled Genes to Gene Cart"),
                           
-                          
-                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          selectInput("volcano_background_col", "Background", 
-                                      choices = c("Light" = "White","Dark" = "Grey"), selected = "White"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           downloadButton("download_volcano_plot", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
@@ -1343,13 +1338,13 @@ server <- function(input, output, session) {
   search_gene_volcano <- reactiveVal(NULL)
   
   observeEvent(input$search_gene_volcano, {
-    search_gene <- input$searched_gene_volcano
-    search_gene_volcano(search_gene)
+    search_genes <- strsplit(toupper(input$searched_gene_volcano), "[, ]+")[[1]]  # Split by comma or space
+    search_gene_volcano(search_genes)
   })
   
   observeEvent(input$clear_search_gene_volcano, {
     search_gene_volcano(NULL)
-    updateTextInput(session, "searched_gene_volcano", value = "")
+    updateTextInput(session, "searched_gene_volcano", value = "")  # Clear the search bar
   })
   
   
@@ -1357,7 +1352,10 @@ server <- function(input, output, session) {
     selected_fdr <- as.numeric(input$selected_fdr)
     selected_fc <- as.numeric(input$selected_fc)
     order <- order_val()
-    searched_gene <- search_gene_volcano()
+    searched_genes <- search_gene_volcano()  # Use search for multiple genes
+    
+    # Dynamically determine contrasting text color for searched genes based on tissue colors
+    searched_gene_color <- "black"  # Default color for highlighting searched genes
     
     # Add a column to indicate gene labeling logic
     data <- data %>%
@@ -1386,50 +1384,6 @@ server <- function(input, output, session) {
       )
       label_1 <- input$tissue_select2
       label_2 <- input$tissue_select1
-    }
-    
-    # Logic to select top genes based on user's choice (FDR or FC)
-    if (input$labeling_option == "basic") {
-      if (input$labeling_metric == "fdr") {
-        # Label by FDR (smallest p-values)
-        top_genes <- data %>%
-          filter((is.na(selected_fdr) | padj < selected_fdr) & abs(log2FoldChange) >= selected_fc) %>%
-          arrange(padj) %>%
-          head(input$n_labels)
-      } else {
-        # Label by Fold Change (largest absolute log2 fold changes)
-        top_genes <- data %>%
-          filter((is.na(selected_fdr) | padj < selected_fdr)) %>%
-          arrange(desc(abs(log2FoldChange))) %>%
-          head(input$n_labels)
-      }
-    } else {
-      if (input$labeling_metric == "fdr") {
-        # Label by FDR (smallest p-values) for advanced labeling
-        top_genes_left <- data %>%
-          filter(log2FoldChange < -selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
-          arrange(padj) %>%
-          head(input$n_labels_left)
-        
-        top_genes_right <- data %>%
-          filter(log2FoldChange > selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
-          arrange(padj) %>%
-          head(input$n_labels_right)
-      } else {
-        # Label by Fold Change (largest absolute log2 fold changes) for advanced labeling
-        top_genes_left <- data %>%
-          filter(log2FoldChange < -selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
-          arrange(desc(abs(log2FoldChange))) %>%
-          head(input$n_labels_left)
-        
-        top_genes_right <- data %>%
-          filter(log2FoldChange > selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
-          arrange(desc(abs(log2FoldChange))) %>%
-          head(input$n_labels_right)
-      }
-      
-      # Combine left and right labeled genes
-      top_genes <- bind_rows(top_genes_left, top_genes_right)
     }
     
     # Define the plot with adjusted margins
@@ -1461,21 +1415,76 @@ server <- function(input, output, session) {
         axis.line = ggplot2::element_line(color = "black")
       ) +
       ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(shape = 15, size = 5))) +
-      geom_text_repel(data = top_genes, aes(label = Gene), max.overlaps = 1000, color = "black") +
       geom_hline(yintercept = -log10(selected_fdr), linetype = "dashed", color = "red", alpha = 1/3) +
       geom_vline(xintercept = c(-selected_fc, selected_fc), linetype = "dashed", color = "blue", alpha = 1/3)
     
-    # Optional: Additional logic for highlighting a searched gene
-    if (!is.null(searched_gene) && toupper(searched_gene) %in% data$Gene) {
-      p <- p + geom_point(data = data %>% filter(Gene == toupper(searched_gene)),
-                          aes(x = log2FoldChange, y = -log10(padj)), 
-                          color = searched_gene_color, size = 3)
-    } else if (!is.null(searched_gene) && !(toupper(searched_gene) %in% data$Gene)) {
-      showNotification(paste("Gene", searched_gene, "not found."), type = "warning")
+    # If searched genes exist, only label searched genes
+    if (!is.null(searched_genes) && length(searched_genes) > 0) {
+      p <- p + geom_point(data = data %>% filter(Gene %in% searched_genes),
+                          aes(x = log2FoldChange, y = -log10(padj)),
+                          color = searched_gene_color, size = 3) +
+        geom_text_repel(data = data %>% filter(Gene %in% searched_genes),
+                        aes(label = Gene),
+                        max.overlaps = Inf,  # Ensure all searched genes get labeled
+                        box.padding = 0.5,   # Add space between labels and points
+                        point.padding = 0.5, # Add space between labels and the points
+                        color = searched_gene_color, 
+                        size = 5)            # Label size and color for searched genes
+    } else {
+      # If no searched genes, label top genes based on FDR or FC
+      if (input$labeling_option == "basic") {
+        if (input$labeling_metric == "fdr") {
+          # Label by FDR (smallest p-values)
+          top_genes <- data %>%
+            filter((is.na(selected_fdr) | padj < selected_fdr) & abs(log2FoldChange) >= selected_fc) %>%
+            arrange(padj) %>%
+            head(input$n_labels)
+        } else {
+          # Label by Fold Change (largest absolute log2 fold changes)
+          top_genes <- data %>%
+            filter((is.na(selected_fdr) | padj < selected_fdr)) %>%
+            arrange(desc(abs(log2FoldChange))) %>%
+            head(input$n_labels)
+        }
+      } else {
+        if (input$labeling_metric == "fdr") {
+          # Label by FDR (smallest p-values) for advanced labeling
+          top_genes_left <- data %>%
+            filter(log2FoldChange < -selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
+            arrange(padj) %>%
+            head(input$n_labels_left)
+          
+          top_genes_right <- data %>%
+            filter(log2FoldChange > selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
+            arrange(padj) %>%
+            head(input$n_labels_right)
+        } else {
+          # Label by Fold Change (largest absolute log2 fold changes) for advanced labeling
+          top_genes_left <- data %>%
+            filter(log2FoldChange < -selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
+            arrange(desc(abs(log2FoldChange))) %>%
+            head(input$n_labels_left)
+          
+          top_genes_right <- data %>%
+            filter(log2FoldChange > selected_fc & (is.na(selected_fdr) | padj < selected_fdr)) %>%
+            arrange(desc(abs(log2FoldChange))) %>%
+            head(input$n_labels_right)
+        }
+        
+        # Combine left and right labeled genes
+        top_genes <- bind_rows(top_genes_left, top_genes_right)
+      }
+      
+      # Add the general top gene labels
+      p <- p + geom_text_repel(data = top_genes, aes(label = Gene),
+                               max.overlaps = 1000, color = "black")
     }
     
     return(p)
   }
+  
+  
+  
   
 
     
@@ -1500,26 +1509,6 @@ server <- function(input, output, session) {
       ggsave(file, plot = p, width = 20, height = 13, units = "in", dpi = 300, bg = "white")
     }
   )
-  
-  observeEvent(input$add_to_cart_volcano, {
-    data <- unfiltered_data()
-    gene <- search_gene_volcano()
-    
-    if (!is.null(gene) && gene != "") {
-      # Convert gene to uppercase for comparison
-      gene_upper <- toupper(gene)
-      
-      # Check if the gene exists in the dataset
-      if (gene_upper %in% toupper(data$Gene)) {
-        add_to_cart(gene_upper)
-        showNotification("Gene added to the cart.", type = "message")
-      } else {
-        showNotification(paste("Gene", gene, "not found."), type = "warning")
-      }
-    } else {
-      showNotification("No gene specified.", type = "warning")
-    }
-  })
   
   # Event to add DE genes from Tissue 1
   # Event to add DE genes from the correct tissue based on `order`
