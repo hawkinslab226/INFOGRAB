@@ -47,4 +47,5 @@ Imports:
     stringr,
     igvShiny,
     BiocManager,
-    VariantAnnotation
+    VariantAnnotation,
+    Rsamtools
