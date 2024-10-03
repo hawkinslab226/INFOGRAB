@@ -1,5 +1,14 @@
 
-setwd("~/Documents/Internship/InfoGrab")
+#setwd("~/Documents/Internship/InfoGrab")
+
+# 10/1 To Do:
+
+# Look at genome browser
+# Try adding sample files to add
+# Fix pop-up menu in differential expression graph (Server code works, but ui needs to be fixed)
+
+# FINISH THE APP
+# Work on help section
 
 required_packages <- c(
   "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
@@ -10,7 +19,7 @@ required_packages <- c(
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
   "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", 
   "igraph", "seriation", "GGally", "knitr", "devtools", "stringr",
-  "BiocManager", "VariantAnnotation"
+  "BiocManager", "VariantAnnotation", "bslib"
 )
 
 install_if_missing <- function(pkg) {
@@ -92,6 +101,7 @@ library(bslib)
 library(igvShiny)
 library(rtracklayer)
 library(VariantAnnotation)
+library(Rsamtools)
 
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
@@ -275,6 +285,35 @@ ui <- navbarPage(
         width: 300px;
         z-index: 1050;
       }
+     #tissue-selection-menu {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 250px;
+        z-index: 1000;
+        background-color: white;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+      }
+      #tissue-selection-menu h4 {
+        margin: 10px;
+        font-size: 16px;
+      }
+      #tissue-selection-menu .close-btn {
+        position: absolute;
+        top: 5px;
+        right: 10px;
+        cursor: pointer;
+        font-size: 18px;
+      }
+      #tissue-selection-menu .content {
+        padding: 10px;
+      }
+      #tissue-selection-menu input, #tissue-selection-menu select, #tissue-selection-menu button {
+        width: 100%;
+        margin-bottom: 10px;
+      }
     "))
   ),
   tabPanel("INFO GRAB",
@@ -302,13 +341,15 @@ ui <- navbarPage(
                           selectInput("tissue_select2", "Tissue 2", choices = tissue_names[-1]),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           actionButton("add_all_de_cart", "Add All DE Genes to Gene Cart"),
+                          uiOutput("de_genes_tissue1_button"),
+                          uiOutput("de_genes_tissue2_button"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           selectInput("selected_fdr", "FDR", 
                                       choices = c("No filter" = NA, "0.01" = 0.01, "0.05" = 0.05, "0.1" = 0.1), 
                                       selected = "0.05"),
                           sliderInput("selected_fc", "FC (log2 fold change)", min = 0, max = 20, step = 1, value = 0),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          sliderInput("num_of_digits", "Number of digits", value = 5, min = 2, max = 20),
+                          sliderInput("num_of_digits", "Number of digits", value = 3, min = 2, max = 20),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           downloadButton("download_DEA_data", "Download CSV"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
@@ -361,21 +402,18 @@ ui <- navbarPage(
                       )
              ),
              
+             
              tabPanel("Volcano Plot",
                       sidebarLayout(
                         sidebarPanel(
-                          textInput("searched_gene_volcano", "Search for gene:", width = '600px'),
-                          actionButton("search_gene_volcano", "Search for gene(s): (comma-separated)"),
+                          textInput("searched_gene_volcano", "Search for gene(s): (comma-separated):", width = '600px'),
+                          actionButton("search_gene_volcano", "Search"),
                           actionButton("clear_search_gene_volcano", "Clear"),
-                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                        
-                          uiOutput("de_genes_tissue1_button"),
-                          uiOutput("de_genes_tissue2_button"),
 
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           
                             radioButtons("labeling_metric", "Label genes by:",
-                                         choices = list("Smallest FDR" = "fdr", "Largest Fold Change" = "fc"),
+                                         choices = list("Smallest FDR" = "fdr", "Largest Absolute Fold Change" = "fc"),
                                          selected = "fdr"),
                           
                           
@@ -477,101 +515,45 @@ ui <- navbarPage(
                       )
              ),
              
-             tabPanel("Gene Expression",
-                      sidebarLayout(
-                        sidebarPanel(
-                          textInput("barplot_searched_gene", "Search for genes (comma-separated)", width = '600px'),
-                          actionButton("search_gene_barplot", "Search"),
-                          actionButton("random_gene_barplot", "Search 5 Random Genes"),
-                          actionButton("clear_search_gene_barplot", "Clear"),
-                          actionButton("add_to_cart_barplot", "Add to Gene Cart"),
-                          actionButton("transfer_to_heatmap", "Show Heatmap of Searched Genes"),
-                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_barplot", "Download PNG"),
-                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          tags$p("This section provides a barplot of the average expression levels of selected genes across different tissues. This visualization is helpful for comparing how genes are expressed in different tissue types."),
-                          tags$p("You can search for specific genes and display their average expression levels across the selected tissues. The plot allows for a quick comparison of gene expression patterns and identification of tissue-specific expression.")
-                        ),
-                        mainPanel(
-                          uiOutput("dynamic_title"),
-                          uiOutput("dynamic_barplot_output")
-                        )
-                      )
-             ),
-             
-             
-             tabPanel("Help",
-                      mainPanel(
-                        h2("Analysis"),
-                        
-                        h3("Home"),
-                        p("In the 'Home' tab, you can select two tissues to compare and adjust the analysis parameters."),
-                        tags$ul(
-                          tags$li(tags$b("Tissue 1 and Tissue 2:"), " Select the tissues you want to compare."),
-                          tags$li(tags$b("FDR:"), " Choose the false discovery rate threshold for filtering the results."),
-                          tags$li(tags$b("FC (log2 fold change):"), " Set the fold change threshold for filtering the results."),
-                          tags$li(tags$b("Number of digits:"), " Specify the number of decimal places for displaying values."),
-                          tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
-                          tags$li(tags$b("Search for genes:"), " Enter genes to search in the results."),
-                          tags$li(tags$b("Search 10 Random Genes:"), " Display information for 10 randomly selected genes."),
-                          tags$li(tags$b("Clear:"), " Clear the gene search input."),
-                          tags$li(tags$b("Fold Change Equation:"), " Displays the log2 fold change equation for the selected tissues.")
-                        ),
-                        
-                        h3("Correlation Plot"),
-                        p("The 'Correlation Plot' tab allows you to visualize the correlation between expression levels of genes across different tissues."),
-                        tags$ul(
-                          tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues' and 'Tissues by System'."),
-                          tags$li(tags$b("Use Filtered Data:"), " Option to use filtered data based on selected FDR and FC thresholds."),
-                          tags$li(tags$b("Select System:"), " Select a specific system to view correlation within that system."),
-                          tags$li(tags$b("Correlation Plot Legend:"), " The plot includes a legend that matches the tissue colors with their corresponding tissues.")
-                        ),
-                        
-                        h3("Volcano Plot"),
-                        p("The 'Volcano Plot' tab allows you to visualize the results of the differential expression analysis."),
-                        tags$ul(
-                          tags$li(tags$b("Search for gene:"), " Enter a gene name to highlight it on the plot."),
-                          tags$li(tags$b("Labeling Options:"), " Choose between basic or advanced labeling options for the plot."),
-                          tags$li(tags$b("Background:"), " Choose the background color for the plot."),
-                          tags$li(tags$b("Download PNG:"), " Download the volcano plot as a PNG file."),
-                          tags$li(tags$b("Advanced Labeling Options:"), " Allows the user to specify the number of labels on each side of the volcano plot separately.")
-                        ),
-                        
-                        h3("Heatmap"),
-                        p("The 'Heatmap' tab provides a heatmap visualization of the expression levels of genes."),
-                        tags$ul(
-                          tags$li(tags$b("Sort by:"), " Choose to sort the genes by FDR or fold change."),
-                          tags$li(tags$b("Number of Top Genes:"), " Select the number of top genes to include in the heatmap."),
-                          tags$li(tags$b("Search for Specific Genes:"), " Enter gene names (comma-separated) to highlight on the heatmap."),
-                          tags$li(tags$b("Random Gene Search:"), " Search for 10 random genes and highlight them on the heatmap."),
-                          tags$li(tags$b("Select Color Scale:"), " Choose the color scale for the heatmap."),
-                          tags$li(tags$b("Download PNG:"), " Download the heatmap as a PNG file.")
-                        ),
-                        
-                        h3("PCA"),
-                        p("The 'PCA' tab allows you to perform Principal Component Analysis on the selected tissues."),
-                        tags$ul(
-                          tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues', 'Tissues by System', and 'All Tissues'."),
-                          tags$li(tags$b("Select System:"), " Select a specific system for PCA analysis when 'Tissues by System' mode is selected."),
-                          tags$li(tags$b("Download PCA Plot:"), " Download the PCA plot as a PNG file.")
-                        ),
-                        
-                        h3("Gene Expression Chart"),
-                        p("The 'Gene Expression Chart' tab allows you to visualize the average expression levels of selected genes across different tissues."),
-                        tags$ul(
-                          tags$li(tags$b("Search for genes:"), " Enter genes (comma-separated) to create bar charts of their average expression levels."),
-                          tags$li(tags$b("Search 5 Random Genes:"), " Display bar charts for 5 randomly selected genes."),
-                          tags$li(tags$b("Clear:"), " Clear the gene search input."),
-                          tags$li(tags$b("Download Barplot:"), " Download the bar charts as a PNG file.")
-                        ),
-                        
-                        h3("Parameters Explanation"),
-                        tags$p("False Discovery Rate (FDR): The expected proportion of false discoveries among the rejected hypotheses."),
-                        tags$p("Fold Change (FC): A measure describing how much a quantity changes between an original and a subsequent measurement.")
-                      )
+             conditionalPanel(
+               condition = "input.differential_analysis_tab != 'Home'",
+               div(
+                 id = "tissue-selection-menu",
+                 wellPanel(
+                   actionButton("toggle_tissue_menu", "Select Tissues"),
+                   hidden(
+                     div(
+                       id = "tissue_menu_content",
+                       selectInput("tissue_select1_menu", "Tissue 1", choices = tissue_names),
+                       selectInput("tissue_select2_menu", "Tissue 2", choices = tissue_names),
+                       actionButton("apply_tissue_selection_menu", "Apply")
+                     )
+                   )
+                 )
+               )
              )
-             
-             
+           )
+  ),
+  
+  tabPanel("Gene Expression Visualization",
+           sidebarLayout(
+             sidebarPanel(
+               textInput("barplot_searched_gene", "Search for genes (comma-separated)", width = '600px'),
+               actionButton("search_gene_barplot", "Search"),
+               actionButton("random_gene_barplot", "Search 5 Random Genes"),
+               actionButton("clear_search_gene_barplot", "Clear"),
+               actionButton("add_to_cart_barplot", "Add to Gene Cart"),
+               actionButton("transfer_to_heatmap", "Show Heatmap of Searched Genes"),
+               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+               downloadButton("download_barplot", "Download PNG"),
+               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+               tags$p("This section provides a barplot of the average expression levels of selected genes across different tissues. This visualization is helpful for comparing how genes are expressed in different tissue types."),
+               tags$p("You can search for specific genes and display their average expression levels across the selected tissues. The plot allows for a quick comparison of gene expression patterns and identification of tissue-specific expression.")
+             ),
+             mainPanel(
+               uiOutput("dynamic_title"),
+               uiOutput("dynamic_barplot_output")
+             )
            )
   ),
   
@@ -599,7 +581,7 @@ ui <- navbarPage(
                                                   "Inferno" = "inferno"),
                                       selected = "purple_white_green"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          actionButton("add_to_cart_tissue_specific_heatmap", "Add to Gene Cart"),
+                          actionButton("add_to_cart_tissue_specific_heatmap", "Add Displayed Genes to Gene Cart"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           downloadButton("download_tissue_specific_heatmap", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
@@ -617,6 +599,8 @@ ui <- navbarPage(
   ),
   
   # Genome Browser
+  
+  # Need to fix .bed file
   
   tabPanel("Genome Viewer",
            fluidPage(
@@ -681,43 +665,208 @@ ui <- navbarPage(
   ),
   
   
-  tabPanel("Gene Cart", 
-           sidebarLayout(
-             sidebarPanel(
-               tags$textarea(id = "gene_text_area", style = "position: absolute; left: -9999px;"),
-               
-               actionButton("copy_cart_genes", "Copy Genes to Clipboard"),
-               actionButton("clear_cart", "Clear Cart"),
-               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-               tags$h3("Useful Links"),
-               div(style = "font-size: 15px;", 
-                   tags$ul(
-                     tags$li(a(href = "http://bioinformatics.sdstate.edu/go/", 
-                               "ShinyGO: Gene Ontology Enrichment Analysis", target = "_blank")),
-                     tags$li(a(href = "https://davidbioinformatics.nih.gov/tools.jsp", 
-                               "DAVID: Database for Annotation, Visualization and Integrated Discovery", target = "_blank")),
-                     tags$li(a(href = "https://pantherdb.org", 
-                               "PantherDB: Panther Classification System", target = "_blank"))
-                   )
-               )
-               
-             ),
-             mainPanel(
-               DTOutput("cart_gene_table")
-             )
-           )
-  ),
+ tabPanel("Gene Cart",             
+  sidebarLayout(
+    sidebarPanel(
+      tags$textarea(id = "gene_text_area", style = "position: absolute; left: -9999px;"),
+      actionButton("copy_cart_genes", "Copy Genes to Clipboard"),
+      actionButton("clear_cart", "Clear Cart"),
+      tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+      sliderInput("num_of_digits_tau", "Number of digits", value = 3, min = 2, max = 20),
+      tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+      tags$h3("Useful Links"),
+      div(style = "font-size: 15px;", 
+          tags$ul(
+            tags$li(a(href = "http://bioinformatics.sdstate.edu/go/", 
+                      "ShinyGO: Gene Ontology Enrichment Analysis", target = "_blank")),
+            tags$li(a(href = "https://davidbioinformatics.nih.gov/tools.jsp", 
+                      "DAVID: Database for Annotation, Visualization and Integrated Discovery", target = "_blank")),
+            tags$li(a(href = "https://pantherdb.org", 
+                      "PantherDB: Panther Classification System", target = "_blank"))
+          )
+      ),
+      tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+      downloadButton("download_results", "Download Results (CSV)")
+    ),
+    mainPanel(
+      DTOutput("cart_gene_table")
+    )
+  )
+),
   
-  tabPanel("About",
+  tabPanel("Help",
            fluidPage(
              h2("App Version and Information"),
+             
              tabsetPanel(
+               
+               # Differential Analysis Help Tab
+               tabPanel("Differential Analysis Help",
+                        mainPanel(
+                          h2("Analysis Help"),
+                          h3("Home"),
+                          p("In the 'Home' tab, you can select two tissues to compare and adjust the analysis parameters."),
+                          tags$ul(
+                            tags$li(tags$b("Tissue 1 and Tissue 2:"), " Select the tissues you want to compare."),
+                            tags$li(tags$b("FDR:"), " Choose the false discovery rate threshold for filtering the results."),
+                            tags$li(tags$b("FC (log2 fold change):"), " Set the fold change threshold for filtering the results."),
+                            tags$li(tags$b("Number of digits:"), " Specify the number of decimal places for displaying values."),
+                            tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
+                            tags$li(tags$b("Search for genes:"), " Enter genes to search in the results."),
+                            tags$li(tags$b("Search 10 Random Genes:"), " Display information for 10 randomly selected genes."),
+                            tags$li(tags$b("Clear:"), " Clear the gene search input."),
+                            tags$li(tags$b("Fold Change Equation:"), " Displays the log2 fold change equation for the selected tissues.")
+                          ),
+                          h3("Correlation Plot"),
+                          p("The 'Correlation Plot' tab allows you to visualize the correlation between expression levels of genes across different tissues."),
+                          tags$ul(
+                            tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues' and 'Tissues by System'."),
+                            tags$li(tags$b("Use Filtered Data:"), " Option to use filtered data based on selected FDR and FC thresholds."),
+                            tags$li(tags$b("Select System:"), " Select a specific system to view correlation within that system."),
+                            tags$li(tags$b("Correlation Plot Legend:"), " The plot includes a legend that matches the tissue colors with their corresponding tissues.")
+                          ),
+                          h3("Volcano Plot"),
+                          p("The 'Volcano Plot' tab allows you to visualize the results of the differential expression analysis."),
+                          tags$ul(
+                            tags$li(tags$b("Search for gene:"), " Enter a gene name to highlight it on the plot."),
+                            tags$li(tags$b("Labeling Options:"), " Choose between basic or advanced labeling options for the plot."),
+                            tags$li(tags$b("Background:"), " Choose the background color for the plot."),
+                            tags$li(tags$b("Download PNG:"), " Download the volcano plot as a PNG file."),
+                            tags$li(tags$b("Advanced Labeling Options:"), " Allows the user to specify the number of labels on each side of the volcano plot separately.")
+                          ),
+                          h3("Heatmap"),
+                          p("The 'Heatmap' tab provides a heatmap visualization of the expression levels of genes."),
+                          tags$ul(
+                            tags$li(tags$b("Sort by:"), " Choose to sort the genes by FDR or fold change."),
+                            tags$li(tags$b("Number of Top Genes:"), " Select the number of top genes to include in the heatmap."),
+                            tags$li(tags$b("Search for Specific Genes:"), " Enter gene names (comma-separated) to highlight on the heatmap."),
+                            tags$li(tags$b("Random Gene Search:"), " Search for 10 random genes and highlight them on the heatmap."),
+                            tags$li(tags$b("Select Color Scale:"), " Choose the color scale for the heatmap."),
+                            tags$li(tags$b("Download PNG:"), " Download the heatmap as a PNG file.")
+                          ),
+                          h3("PCA"),
+                          p("The 'PCA' tab allows you to perform Principal Component Analysis on the selected tissues."),
+                          tags$ul(
+                            tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues', 'Tissues by System', and 'All Tissues'."),
+                            tags$li(tags$b("Select System:"), " Select a specific system for PCA analysis when 'Tissues by System' mode is selected."),
+                            tags$li(tags$b("Download PCA Plot:"), " Download the PCA plot as a PNG file.")
+                          ),
+                          h3("Parameters Explanation"),
+                          tags$p("False Discovery Rate (FDR): The expected proportion of false discoveries among the rejected hypotheses."),
+                          tags$p("Fold Change (FC): A measure describing how much a quantity changes between an original and a subsequent measurement.")
+                        )
+               ),
+               
+               # Gene Expression Visualization Help Tab
+               tabPanel("Gene Expression Visualization Help",
+                        mainPanel(
+                          h2("Gene Expression Visualization Help"),
+                          h3("Overview"),
+                          p("The 'Gene Expression' tab allows users to visualize the average expression levels of selected genes across different tissues using bar plots."),
+                          h3("Selecting Tissues and Genes"),
+                          tags$ul(
+                            tags$li(tags$b("Tissue 1 and Tissue 2:"), " Select two tissues for comparison."),
+                            tags$li(tags$b("Top Genes:"), " The top 5 commonly expressed genes are automatically selected and displayed."),
+                            tags$li(tags$b("Search for Genes:"), " You can search for specific genes by entering their names into the search box."),
+                            tags$li(tags$b("Search 5 Random Genes:"), " Display 5 random genes from the dataset."),
+                            tags$li(tags$b("Add to Gene Cart:"), " Add the genes displayed in the bar plot to the gene cart."),
+                            tags$li(tags$b("Transfer to Heatmap:"), " Transfer searched genes to the heatmap for further exploration.")
+                          ),
+                          h3("Bar Plot"),
+                          p("The bar plot shows the average expression levels of selected genes across tissues, allowing for easy comparison."),
+                          h3("Transferring to Heatmap"),
+                          p("Selected genes can be transferred to the heatmap for detailed visualization of expression patterns."),
+                          tags$ul(
+                            tags$li(tags$b("Heatmap Modal:"), " The heatmap is displayed in a modal dialog with clustering and color-coded annotations."),
+                            tags$li(tags$b("Download Heatmap:"), " Download the heatmap as a PNG file.")
+                          )
+                        )
+               ),
+               
+               # Tissue-Specific Analysis Help Tab
+               tabPanel("Tissue-Specific Analysis Help",
+                        mainPanel(
+                          h2("Tissue-Specific Analysis Help"),
+                          h3("Overview"),
+                          p("The 'Tissue-Specific Analysis' tab visualizes tissue-specific transcript isoforms across tissues and systems using heatmaps."),
+                          h3("Selecting Systems and Tissues"),
+                          tags$ul(
+                            tags$li(tags$b("System Choice:"), " Select one or more biological systems to filter the tissues."),
+                            tags$li(tags$b("All Systems:"), " Select 'All Systems' to include all available tissues."),
+                            tags$li(tags$b("Tissue Choice:"), " Choose tissues to visualize."),
+                            tags$li(tags$b("Number of Variable Genes:"), " Specify the number of most variable genes to display.")
+                          ),
+                          h3("Heatmap Visualization"),
+                          p("Visualizes the most variable tissue-specific genes across selected tissues."),
+                          tags$ul(
+                            tags$li(tags$b("Tau Scores:"), " Only genes with Tau scores of ", tags$b("0.8"), " or higher are included."),
+                            tags$li(tags$b("Clustering:"), " Genes are clustered by correlation and tissues are ordered by system.")
+                          ),
+                          h3("Interactive Heatmap Features"),
+                          p("Explore tissue-specific gene expression interactively by brushing genes and adding them to the gene cart."),
+                          h3("Gene Cart"),
+                          p("Selected genes can be added to the gene cart for further analysis.")
+                        )
+               ),
+               
+               # Genome Browser Help Tab
+               tabPanel("Genome Browser Help",
+                        mainPanel(
+                          h2("Genome Browser Help"),
+                          h3("Overview"),
+                          p("The Genome Browser allows you to visualize genomic data by uploading or linking to file formats like GFF3, BAM, BED, and VCF."),
+                          h3("Supported File Types"),
+                          tags$ul(
+                            tags$li(tags$b("GFF3/GFF:"), " Upload for gene annotations."),
+                            tags$li(tags$b("BAM:"), " Upload for aligned sequencing reads."),
+                            tags$li(tags$b("BED:"), " Upload for defining genomic regions."),
+                            tags$li(tags$b("VCF:"), " Upload for storing genetic variations.")
+                          ),
+                          h3("File Upload"),
+                          p("Upload files from your local machine. Supported formats include GFF3, BAM, BED, and VCF."),
+                          h3("Loading Tracks from URLs"),
+                          p("Load tracks directly from URLs."),
+                          h3("Navigating the Genome"),
+                          p("Enter a genomic region in the search field to navigate to specific regions."),
+                          h3("Common Errors"),
+                          tags$ul(
+                            tags$li(tags$b("Unsupported File Type:"), " Ensure that uploaded files are in the supported formats."),
+                            tags$li(tags$b("Chromosome Mapping Errors:"), " If the chromosome mapping file is missing or incorrectly formatted, an error will be shown.")
+                          )
+                        )
+               ),
+               
+               # Gene Cart Help Tab
+               tabPanel("Gene Cart Help",
+                        mainPanel(
+                          h2("Gene Cart and Allele-Specific Expression (ASE) Help"),
+                          h3("Gene Cart Functionality"),
+                          tags$ul(
+                            tags$li(tags$b("Adding Genes to Cart:"), " Add genes from various sections of the app for further analysis."),
+                            tags$li(tags$b("Clearing the Cart:"), " Clear all genes from the cart."),
+                            tags$li(tags$b("Copying Genes from Cart:"), " Copy the gene list for use in other applications.")
+                          ),
+                          h3("Tau Score Calculation"),
+                          p("The Tau score is a measure of tissue specificity, ranging from 0 to 1, with 1 being more tissue specific."),
+                          h3("Displaying and Interacting with Gene Data"),
+                          p("Gene expression data is aggregated by tissue, with Tau scores calculated for each gene."),
+                          h3("Interacting with the Gene Cart"),
+                          tags$ul(
+                            tags$li(tags$b("Copying Genes:"), " Copy genes from the cart."),
+                            tags$li(tags$b("Clearing the Cart:"), " Clear the cart and confirm via a modal.")
+                          )
+                        )
+               ),
+               
+               # Version Tab
                tabPanel("Version",
                         br(),
                         p("Version: 1.0.0"),
                         p("Developed by: Oliver Brown (ombrown@uw.edu)"),
-                        tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank")
+                        tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank"),
                ),
+               
+               # Credits Tab
                tabPanel("Credits",
                         h4("Acknowledgments:"),
                         br(),
@@ -726,7 +875,7 @@ ui <- navbarPage(
                         h6("IGV:"),
                         tags$ul(
                           tags$li("Robinson JT, Thorvaldsdóttir H, Winckler W, et al. Integrative Genomics Viewer. *Nature Biotechnology* 29, 24–26 (2011)."),
-                          tags$li("Thorvaldsdóttir H, Robinson JT, Mesirov JP. Integrative Genomics Viewer (IGV): high-performance genomics data visualization and exploration. *Briefings in Bioinformatics* 14, 178–192 (2013)."),
+                          tags$li("Thorvaldsdóttir H, Robinson JT, Mesirov JP. Integrative Genomics Viewer (IGV): high-performance genomics data visualization. *Briefings in Bioinformatics* 14, 178–192 (2013)."),
                           tags$li("Robinson JT, Thorvaldsdóttir H, Wenger AM, et al. Variant Review with the Integrative Genomics Viewer (IGV). *Cancer Research* 77(21):31-34 (2017)."),
                           tags$li("Robinson JT, Thorvaldsdóttir H, Turner D, Mesirov JP. igv.js: an embeddable JavaScript implementation of the Integrative Genomics Viewer (IGV). *Bioinformatics* 39(1), btac830 (2023).")
                         ),
@@ -804,7 +953,7 @@ server <- function(input, output, session) {
                     img_path <- paste0(gsub(" ", "_", tissue), ".png")
                     img_src <- file.path("www", img_path)
                     if (file.exists(img_src)) {
-                      img(src = img_path, style = "width: 30px; height: auto; margin-right: 5px;")
+                      img(src = img_path, style = "width: 80px; height: auto; margin-right: 13px;")
                     }
                   },
                   actionLink(inputId = paste0("tissue_", gsub(" ", "_", tissue)), 
@@ -1324,6 +1473,65 @@ server <- function(input, output, session) {
     )
   })
   
+  # Popup menu
+
+  observe({
+    shinyjs::useShinyjs()  # Enable shinyjs
+  })
+  
+  tissue_menu_visible <- reactiveVal(FALSE) 
+  
+  observeEvent(input$toggle_tissue_menu, {
+    if (tissue_menu_visible()) {
+      shinyjs::runjs('$("#tissue-selection-menu").css("height", "75px");')
+      tissue_menu_visible(FALSE) 
+    } else {
+
+      shinyjs::runjs('$("#tissue-selection-menu").css("height", "400px");')  
+      tissue_menu_visible(TRUE)  
+    }
+    toggle("tissue_menu_content") 
+  })
+  
+  shinyjs::runjs('$("#tissue-selection-menu").css("height", "100px");')
+  
+  observe({
+    updateSelectInput(session, "tissue_select2_menu",
+                      choices = tissue_names[tissue_names != input$tissue_select1_menu],
+                      selected = isolate(input$tissue_select2_menu))
+  })
+  
+  observe({
+    updateSelectInput(session, "tissue_select1_menu",
+                      choices = tissue_names[tissue_names != input$tissue_select2_menu],
+                      selected = isolate(input$tissue_select1_menu))
+  })
+  
+  # Handle the "Apply" button click
+  # Handle the "Apply" button click
+  observeEvent(input$apply_tissue_selection_menu, {
+    req(input$tissue_select1_menu, input$tissue_select2_menu)
+    
+    # Update the main tissue selection inputs
+    updateSelectInput(session, "tissue_select1", selected = input$tissue_select1_menu)
+    updateSelectInput(session, "tissue_select2", selected = input$tissue_select2_menu)
+    
+    # Close the tissue selection menu after applying
+    shinyjs::runjs('$("#tissue-selection-menu").css("height", "75px");')  # Set shorter height when closed
+    hide("tissue_menu_content")  # Hide the menu content
+    tissue_menu_visible(FALSE)  # Update state to closed
+    
+    # Optionally, you can trigger any reactivity needed, e.g., re-run analyses or update plots
+    # For example, you might invalidate reactive expressions or force re-rendering of plots
+  })
+  
+  
+  # Ensure that when tissues are changed on the Home tab, the menu reflects those changes
+  observe({
+    updateSelectInput(session, "tissue_select1_menu", selected = input$tissue_select1)
+    updateSelectInput(session, "tissue_select2_menu", selected = input$tissue_select2)
+  })
+  
   
   ### Volcano Plot
   
@@ -1416,7 +1624,23 @@ server <- function(input, output, session) {
       ) +
       ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(shape = 15, size = 5))) +
       geom_hline(yintercept = -log10(selected_fdr), linetype = "dashed", color = "red", alpha = 1/3) +
-      geom_vline(xintercept = c(-selected_fc, selected_fc), linetype = "dashed", color = "blue", alpha = 1/3)
+      geom_vline(xintercept = c(-selected_fc, selected_fc), linetype = "dashed", color = "blue", alpha = 1/3) + 
+      annotate("text", x = 0 + max(data$log2FoldChange) * 0.5, 
+               y = max(-log10(data$padj), na.rm = TRUE) * 1.2, 
+               label = label_1, size = 5, hjust = 0.5) +
+      annotate("text", x = 0 - max(data$log2FoldChange) * 0.5, 
+               y = max(-log10(data$padj), na.rm = TRUE) * 1.2, 
+               label = label_2, size = 5, hjust = 0.5) +
+      annotate("segment", x = 0 + max(data$log2FoldChange) * 0.4, 
+               y = max(-log10(data$padj), na.rm = TRUE) * 1.175, 
+               xend = 0 + max(data$log2FoldChange) * 0.6, 
+               yend = max(-log10(data$padj), na.rm = TRUE) * 1.175,
+               arrow = arrow(length = unit(0.3, "cm"))) +
+      annotate("segment", x = 0 - max(data$log2FoldChange) * 0.4, 
+               y = max(-log10(data$padj), na.rm = TRUE) * 1.175, 
+               xend = 0 - max(data$log2FoldChange) * 0.6, 
+               yend = max(-log10(data$padj), na.rm = TRUE) * 1.175,
+               arrow = arrow(length = unit(0.3, "cm")))
     
     # If searched genes exist, only label searched genes
     if (!is.null(searched_genes) && length(searched_genes) > 0) {
@@ -1544,12 +1768,12 @@ server <- function(input, output, session) {
   
   output$de_genes_tissue1_button <- renderUI({
     req(input$tissue_select1)
-    actionButton("add_de_genes_tissue1", paste("Add All DE Genes from", input$tissue_select1, "to Gene Cart"))
+    actionButton("add_de_genes_tissue1", paste("Add All Upregulated Genes from", input$tissue_select1, "to Gene Cart"))
   })
   
   output$de_genes_tissue2_button <- renderUI({
     req(input$tissue_select2)
-    actionButton("add_de_genes_tissue2", paste("Add All DE Genes from", input$tissue_select2, "to Gene Cart"))
+    actionButton("add_de_genes_tissue2", paste("Add All Upregulated Genes from", input$tissue_select2, "to Gene Cart"))
   })
   
   
@@ -1867,29 +2091,37 @@ server <- function(input, output, session) {
   
   ### Correlation Plot
   
-  current_correlation_plot <- reactiveVal(NULL)
+  # Debounce the inputs to introduce a buffer
+  debounced_correlation_mode <- debounce(reactive(input$correlation_mode), 1500)
+  debounced_correlation_system <- debounce(reactive(input$correlation_system), 3000)
   
+  # Render the title dynamically based on the selected mode and inputs
   output$title_cor_plot <- renderUI({
     req(input$tissue_select1, input$tissue_select2)
     
-    if (input$correlation_mode == "selected") {
+    if (debounced_correlation_mode() == "selected") {
       h3(paste("Correlation Plot:", input$tissue_select1, "and", input$tissue_select2))
-    } else if (input$correlation_mode == "system") {
+    } else if (debounced_correlation_mode() == "system") {
       h3(paste("Correlation Plot:", input$correlation_system, "system"))
     }
   })
   
-  observe({
+  # Reactive function to handle correlation plot generation
+  generate_correlation_plot <- reactive({
+    # Delay plotting until inputs stabilize (debounced)
+    req(debounced_correlation_mode())
     
+    # Select samples based on input mode
     selected_samples <- NULL
-    
-    if (input$correlation_mode == "selected") {
+    if (debounced_correlation_mode() == "selected") {
+      req(input$tissue_select1, input$tissue_select2)
       selected_tissues <- c(input$tissue_select1, input$tissue_select2)
       selected_samples <- phenodata %>%
         filter(Tissue %in% selected_tissues) %>%
         arrange(Tissue) %>%
         pull(Sample_name2)
-    } else if (input$correlation_mode == "system") {
+    } else if (debounced_correlation_mode() == "system") {
+      req(input$correlation_system)
       selected_system <- input$correlation_system
       selected_tissues <- phenodata %>%
         filter(System == selected_system) %>%
@@ -1904,27 +2136,35 @@ server <- function(input, output, session) {
     
     req(selected_samples)
     
-    N <- 1000
-    gene_variability <- apply(RPKM_data, 1, var)
-    top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
-    
-    sample_names1 <- phenodata$Sample_name[match(selected_samples, phenodata$Sample_name2)]
-    
-    if (input$use_filtered_data) {
-      filtered_genes <- rownames(filtered_data_combined())
-      filtered_RPKM <- RPKM_data[rownames(RPKM_data) %in% filtered_genes, , drop = FALSE]
+    # Determine which genes to use
+    if (input$correlation_mode == "selected" && isTRUE(input$use_filtered_data)) {
+      # Use genes from filtered_data_combined()
+      req(filtered_data_combined())
+      filtered_genes <- filtered_data_combined()$Gene
+      if (length(filtered_genes) == 0) {
+        showNotification("No genes available after filtering. Using top variable genes instead.", type = "warning")
+        # Fallback to top variable genes
+        N <- 1000
+        gene_variability <- apply(RPKM_data, 1, var)
+        top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
+      } else {
+        top_genes <- filtered_genes
+      }
     } else {
-      filtered_RPKM <- RPKM_data
+      # Use top N variable genes
+      N <- 1000
+      gene_variability <- apply(RPKM_data, 1, var)
+      top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
     }
     
-    filtered_RPKM <- filtered_RPKM[rownames(filtered_RPKM) %in% top_genes, , drop = FALSE]
+    # Now proceed to get the data
+    sample_names1 <- phenodata$Sample_name[match(selected_samples, phenodata$Sample_name2)]
     
+    filtered_RPKM <- RPKM_data[rownames(RPKM_data) %in% top_genes, , drop = FALSE]
     selected_data <- filtered_RPKM[, sample_names1, drop = FALSE]
-    
     colnames(selected_data) <- selected_samples
     
-    sample_tissues <- phenodata$Tissue[match(selected_samples, phenodata$Sample_name2)]
-    
+    # Define diagonal and upper panel functions for the plot
     create_diag <- function(data, mapping, ...) {
       varname <- as_label(mapping$x)
       tissue <- phenodata$Tissue[match(varname, phenodata$Sample_name2)]
@@ -1932,9 +2172,7 @@ server <- function(input, output, session) {
       ggplot(data = data, mapping = mapping) +
         geom_density() +
         theme_void() +
-        ggplot2::theme(
-          panel.background = element_rect(fill = color, colour = "black", size = 2)
-        )
+        ggplot2::theme(panel.background = element_rect(fill = color, colour = "black", size = 2))
     }
     
     custom_ggally_cor <- function(data, mapping, ...) {
@@ -1956,100 +2194,43 @@ server <- function(input, output, session) {
     create_upper <- function(data, mapping, ...) {
       custom_ggally_cor(data = data, mapping = mapping) +
         theme_minimal() +
-        ggplot2::theme(
-          plot.title = element_blank(),
-          axis.title = element_blank()
-        )
+        ggplot2::theme(plot.title = element_blank(), axis.title = element_blank())
     }
     
-    # Store the plot object in a reactive value
-    correlation_plot <- reactive({
-      ggpairs(
-        data = as.data.frame(selected_data),
-        upper = list(continuous = create_upper),
-        diag = list(continuous = create_diag),
-        lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
-      ) +
-        ggplot2::theme(
-          legend.position = "none",
-          legend.box = "horizontal",
-          legend.box.just = "center",
-          legend.text = element_text(size = 14), 
-          legend.title = element_text(size = 16),
-          legend.background = element_rect(fill = "#f0f0f0", color = "black"),
-          legend.key = element_rect(fill = "white", color = "black"),
-          legend.key.size = unit(1.5, "lines")
-        )
-    })
-    
-    if (ncol(selected_data) > 1) {
-      output$correlation_plot <- renderPlot({
-        p <- correlation_plot()
-        
-        present_tissues <- unique(sample_tissues)
-        num_tissues <- length(present_tissues)
-        
-        # Create a data frame for legend positioning
-        legend_data <- data.frame(
-          Tissue = present_tissues,
-          Color = mycolors1[present_tissues],
-          n = num_tissues:1
-        )
-        
-        legend_data$Tissue <- trimws(legend_data$Tissue)
-        
-        # Calculate the length of each label
-        legend_data$label_length <- nchar(legend_data$Tissue)
-        
-        # Calculate the maximum label length
-        max_label_length <- max(nchar(legend_data$Tissue))
-        
-        legend_data$x_pos <- 1.90 - (legend_data$label_length / max_label_length) * 0*3  # Adjust 0.3 as needed
-        
-        legend <- ggplot(legend_data, aes(x = 0.9, y = n)) +
-          geom_point(aes(color = Tissue), size = 5, shape = 15) +
-          geom_text(aes(label = Tissue, x = x_pos), 
-                    vjust = 0.5, size = 5, color = "black") +
-          scale_color_manual(values = mycolors1[present_tissues]) +
-          xlim(0.5, 3) +  # Adjust x limits for spacing
-          ylim(-2*length(present_tissues), length(present_tissues)) +  # Adjust y limits for vertical spacing
-          theme_void() +
-          ggplot2::theme(
-            legend.position = "none",
-            plot.margin = margin(0, 0, 0, 0, "pt")
-          )
-        
-        
-        
-        
-        grid.newpage()
-        pushViewport(viewport(layout = grid.layout(1, 2, widths = unit(c(4, 1), "null"))))
-        print(p, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
-        print(legend, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
-        
-        
-        combined_plot <- arrangeGrob(p, legend, ncol = 1, heights = c(4, 1))
-        
-        current_correlation_plot(combined_plot)
-        
-        
-        
-      })
-      
-      output$download_correlation_plot <- downloadHandler(
-        filename = function() {
-          paste("Correlation", ".png", sep = "")
-        },
-        content = function(file) {
-          ggsave(file, plot = correlation_plot(), device = "png", width = 14, height = 10)
-        }
-      )
-    }
+    # Generate the correlation plot with ggpairs
+    ggpairs(
+      data = as.data.frame(selected_data),
+      upper = list(continuous = create_upper),
+      diag = list(continuous = create_diag),
+      lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
+    ) + ggplot2::theme(
+      legend.position = "none",
+      legend.box = "horizontal",
+      legend.box.just = "center",
+      legend.text = element_text(size = 14),
+      legend.title = element_text(size = 16),
+      legend.background = element_rect(fill = "#f0f0f0", color = "black"),
+      legend.key = element_rect(fill = "white", color = "black"),
+      legend.key.size = unit(1.5, "lines")
+    )
   })
   
   
+  # Plot rendering
+  output$correlation_plot <- renderPlot({
+    req(generate_correlation_plot())
+    print(generate_correlation_plot())
+  })
   
-  
+  # Download handler for correlation plot
+  output$download_correlation_plot <- downloadHandler(
+    filename = function() {
+      paste("Correlation", ".png", sep = "")
+    },
+    content = function(file) {
+      ggsave(file, plot = generate_correlation_plot(), device = "png", width = 14, height = 10)
+    }
+  )
   
   
   
@@ -2138,12 +2319,10 @@ server <- function(input, output, session) {
     })
   })
   
+  ### Gene Expression
   
-  
-  
-  ### barplots
-  
-  # Add a button that takes the genes and brings them to the heatmap tab
+  options(ragg.max_dim = 10000000)
+
   
   barplot_data <- reactiveVal(NULL)
   current_plot <- reactiveVal(NULL)
@@ -2176,18 +2355,29 @@ server <- function(input, output, session) {
   }
   
   observeEvent(input$differential_analysis_tab, {
-    if (input$differential_analysis_tab == "Gene Expression Chart") {
-      
-      req(input$tissue_select1, input$tissue_select2)
+    
+    if (input$differential_analysis_tab == "Gene Expression") {
+      # Ensure data is available before proceeding
+      req(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
       
       top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
       
-      updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
-      updateBarplotData(top_genes)
-      
-      current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
+      if (length(top_genes) > 0) {
+        updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
+        
+        # Add a check to force render if needed
+        if (!is.null(top_genes) && length(top_genes) > 0) {
+          updateBarplotData(top_genes)
+        }
+        
+        current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
+      } else {
+        showNotification("No common genes found between selected tissues.", type = "error")
+      }
     }
   })
+  
+  
   
   
   observeEvent(input$search_gene_barplot, {
@@ -2224,23 +2414,12 @@ server <- function(input, output, session) {
     updateTextInput(session, "barplot_searched_gene", value = "")
     barplot_data(NULL)
     current_plot(NULL)
-    output$dynamic_barplot_output <- renderUI({
-      NULL
-    })
-    
-    current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
-    
-    req(input$tissue_select1, input$tissue_select2)
-    
-    top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
-    
-    updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
-    updateBarplotData(top_genes)
   })
   
   output$dynamic_title <- renderUI({
     h2(current_title(), style = "text-align: center; margin-top: 20px;")
   })
+  
   
   updateBarplotData <- function(genes) {
     if (is.null(genes) || length(genes) == 0) {
@@ -2262,7 +2441,6 @@ server <- function(input, output, session) {
     }
     
     selected_data$Gene <- rownames(selected_data)
-    
     melted_data <- reshape2::melt(selected_data)
     tissue_info <- phenodata[match(melted_data$variable, phenodata$Sample_name), "Tissue"]
     melted_data$Tissue <- tissue_info
@@ -2280,14 +2458,6 @@ server <- function(input, output, session) {
       summarize(average_value = mean(value, na.rm = TRUE), .groups = 'drop') %>%
       ungroup()
     
-    if (nrow(average_expression_per_tissue) == 0) {
-      showNotification("No valid data available for the selected genes and tissues.", type = "error")
-      output$dynamic_barplot_output <- renderUI({
-        h4("No data available for the selected genes and tissues.", style = "text-align: center; color: red;")
-      })
-      return(NULL)
-    }
-    
     barplot_data(average_expression_per_tissue)
     
     output$dynamic_barplot_output <- renderUI({
@@ -2296,14 +2466,13 @@ server <- function(input, output, session) {
     })
     
     output$barplot_plot <- renderPlot({
-      
       p <- ggplot(average_expression_per_tissue, aes(x = Tissue, y = average_value, fill = Tissue)) +
-        geom_bar(stat = "identity", color = "black", width = 0.8) + 
+        geom_bar(stat = "identity", color = "black", width = 0.8) +
         facet_wrap(~ Gene, scales = "free", ncol = 1) +
         theme_minimal() +
         ggplot2::theme(
           axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-          panel.spacing = unit(0.5, "lines"), 
+          panel.spacing = unit(0.5, "lines"),
           panel.border = element_rect(color = "black", fill = NA, size = 0.5),
           strip.background = element_blank(),
           strip.placement = "outside",
@@ -2541,6 +2710,7 @@ server <- function(input, output, session) {
     
     rpkm_heatmap_ordered(rpkm_heatmap_ordered)
     
+    show_row_names <- nrow(rpkm_heatmap_ordered) <= 50
     
     heatmap <- pheatmap(
       rpkm_heatmap_ordered, 
@@ -2555,7 +2725,7 @@ server <- function(input, output, session) {
       border_color = "NA",
       cluster_rows = TRUE,
       cluster_cols = FALSE,
-      show_rownames = FALSE,
+      show_rownames = show_row_names,
       show_colnames = TRUE,
       legend_breaks = c(-6, 0, 6),
       legend_labels = c("low", "medium", "high"),
@@ -2653,7 +2823,7 @@ server <- function(input, output, session) {
   ##############
   
   # Genome Browser
-  
+
   options(shiny.maxRequestSize = 1024 * 1024^2) 
   
   convert_lists_to_chars <- function(df) {
@@ -2670,7 +2840,6 @@ server <- function(input, output, session) {
     })
   })
   
-  # Handle search action to navigate to a specific region in the genome
   observeEvent(input$search_button, {
     req(input$genome_browser_search)
     showGenomicRegion(session = session, id = "igvShiny", region = input$genome_browser_search)
@@ -2679,8 +2848,16 @@ server <- function(input, output, session) {
   
 # NEED TO FIX FILE UPLOADING
   
+  chrom_map_path <- "browser_data_for_app/chrm-ncbi.txt"
+  chrom_map <- NULL
+  
+  if (file.exists(chrom_map_path)) {
+    chrom_map <- read_tsv(chrom_map_path, col_names = c("Chrm_ncbi", "Chromosome"))
+  } else {
+    showNotification("Chromosome mapping file not found.", type = "error")
+  }
+  
   observeEvent(input$loadTrack, {
-    # Color and display settings
     colorTable <- list("gene" = "blue")
     colorByAttribute <- "type"
     displayMode <- "EXPANDED"
@@ -2694,15 +2871,14 @@ server <- function(input, output, session) {
         file_type <- tools::file_ext(input$file$name)
         
         tryCatch({
-          if (file_type == "gff3") {
-            # Import GFF3 using rtracklayer
-            tbl.gff3 <- rtracklayer::import(file_path, format = "gff3")
-            tbl.gff3 <- convert_lists_to_chars(as.data.frame(tbl.gff3))
+          if (file_type == "gff3" || file_type == "gff") {
+            tbl.gff <- rtracklayer::import(file_path, format = file_type)
+            tbl.gff <- convert_lists_to_chars(as.data.frame(tbl.gff))
             loadGFF3TrackFromLocalData(
               session = session,
               id = "igvShiny",
               trackName = input$file$name,
-              tbl.gff3 = tbl.gff3,
+              tbl.gff3 = tbl.gff,
               color = "gray",
               colorTable = colorTable,
               colorByAttribute = colorByAttribute,
@@ -2711,10 +2887,9 @@ server <- function(input, output, session) {
               visibilityWindow = visibilityWindow,
               deleteTracksOfSameName = TRUE
             )
-            showNotification("GFF3 Track loaded successfully", type = "message")
+            showNotification("GFF/GFF3 Track loaded successfully", type = "message")
             
           } else if (file_type == "bam") {
-            # Import BAM using Rsamtools
             bamFile <- Rsamtools::BamFile(file_path)
             loadBamTrackFromLocalData(
               session = session,
@@ -2729,9 +2904,15 @@ server <- function(input, output, session) {
             showNotification("BAM Track loaded successfully", type = "message")
             
           } else if (file_type == "bed") {
-            # Import BED using rtracklayer
             tbl.bed <- rtracklayer::import(file_path, format = "bed")
-            tbl.bed <- convert_lists_to_chars(as.data.frame(tbl.bed))
+            tbl.bed <- as.data.frame(tbl.bed)
+            
+            if (!is.character(tbl.bed$seqnames)) {
+              tbl.bed$seqnames <- as.character(tbl.bed$seqnames)
+            }
+            
+            colnames(tbl.bed)[colnames(tbl.bed) == "seqnames"] <- "chr"
+            
             loadBedTrack(
               session = session,
               id = "igvShiny",
@@ -2739,13 +2920,11 @@ server <- function(input, output, session) {
               tbl = tbl.bed,
               color = "gray",
               trackHeight = 50,
-              autoscale = TRUE,
               deleteTracksOfSameName = TRUE
             )
             showNotification("BED Track loaded successfully", type = "message")
             
           } else if (file_type == "vcf") {
-            # Import VCF using VariantAnnotation
             vcf_data <- VariantAnnotation::readVcf(file_path)
             loadVcfTrack(
               session = session,
@@ -2770,11 +2949,11 @@ server <- function(input, output, session) {
         file_type <- tools::file_ext(url)
         
         tryCatch({
-          if (file_type == "gff3") {
+          if (file_type == "gff3" || file_type == "gff") {
             loadGFF3TrackFromURL(
               session = session,
               id = "igvShiny",
-              trackName = "URL GFF3 Track",
+              trackName = "URL GFF/GFF3 Track",
               gff3URL = url,
               color = "gray",
               colorTable = colorTable,
@@ -2784,7 +2963,7 @@ server <- function(input, output, session) {
               visibilityWindow = visibilityWindow,
               deleteTracksOfSameName = TRUE
             )
-            showNotification("GFF3 Track from URL loaded successfully", type = "message")
+            showNotification("GFF/GFF3 Track from URL loaded successfully", type = "message")
             
           } else if (file_type == "bam") {
             loadBamTrackFromURL(
@@ -2836,35 +3015,23 @@ server <- function(input, output, session) {
       incProgress(1)
     })
   })
-  
+
   observeEvent(input$load_geneASE_track, {
     gene_ase_path <- "browser_data_for_app/gene_ase_converted_cleaned_with_strand.bed"
-    chrom_map_path <- "browser_data_for_app/chrm-ncbi.txt"
     
-    if (file.exists(gene_ase_path) && file.exists(chrom_map_path)) {
+    if (file.exists(gene_ase_path) && !is.null(chrom_map)) {
       withProgress(message = 'Loading Gene ASE Track...', value = 0, {
         tryCatch({
-          # Load the chromosome mapping file
-          chrom_map <- read_tsv(chrom_map_path, col_names = c("Chrm_ncbi", "Chromosome"))
-          
-          # Load Gene ASE data
-          gene_ase_data <- import(gene_ase_path, format = "bed")
+          gene_ase_data <- rtracklayer::import(gene_ase_path, format = "bed")
           gene_ase_df <- as.data.frame(gene_ase_data)
-          
-          # Rename the seqnames column to 'chr' for compatibility
+
           colnames(gene_ase_df)[colnames(gene_ase_df) == "seqnames"] <- "chr"
-          
-          # Merge chromosome mapping with Gene ASE data
           gene_ase_df <- gene_ase_df %>%
             left_join(chrom_map, by = c("chr" = "Chrm_ncbi")) %>%
             mutate(chr = Chromosome) %>%
-            dplyr::select(-Chromosome)
-          
-          # Replace '*' with a default strand, e.g., '+'
-          gene_ase_df <- gene_ase_df %>%
+            dplyr::select(-Chromosome) %>%
             mutate(strand = ifelse(strand == "*", "+", strand))
-          
-          # Load the track using the updated chromosome mapping
+
           loadBedTrack(
             session = session,
             id = "igvShiny",
@@ -2874,115 +3041,72 @@ server <- function(input, output, session) {
             trackHeight = 70,
             deleteTracksOfSameName = TRUE
           )
-          
+
           incProgress(0.5)
-          
         }, error = function(e) {
           showNotification(paste("Error loading Gene ASE Track:", e$message), type = "error")
         })
       })
     }
   })
-  
+
   observeEvent(input$load_snp, {
-    
-    # Show a warning notification that loading may take a few minutes
-    showNotification("Loading may take a few minutes", type = "warning", duration = NULL)
-    
-    # Add a progress bar to indicate the loading process
+    showNotification("Loading may take a few minutes", type = "warning", duration = 10)
+
     withProgress(message = 'Loading VCF file...', value = 0, {
-      
-      # Add a debug message before starting
-      print("Loading VCF file...")  # Console output for debugging
-      
-      # Specify the path to the VCF file
-      vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf" 
-      
-      # Check if the file exists
+      vcf_file <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf"
+
       if (file.exists(vcf_file)) {
-        print("VCF file found.")
         showNotification("VCF file found.", type = "message")
+
+        tryCatch({
+          vcf_data <- VariantAnnotation::readVcf(vcf_file, "galGal6")
+
+          snp_data <- rowRanges(vcf_data)
+          fixed_fields <- as.data.frame(fixed(vcf_data))
+          snp_df <- data.frame(
+            chr = as.character(seqnames(snp_data)),
+            start = start(snp_data),
+            end = end(snp_data),
+            REF = fixed_fields$REF,
+            ALT = sapply(fixed_fields$ALT, function(x) paste(x, collapse = ","))
+          )
+
+          loadBedTrack(
+            session = session,
+            id = "igvShiny",
+            trackName = "SNP ASE Track",
+            tbl = snp_df,
+            color = "darkgreen",
+            trackHeight = 70,
+            deleteTracksOfSameName = TRUE
+          )
+
+          showNotification("Track loaded successfully.", type = "message")
+        }, error = function(e) {
+          showNotification(paste("Error loading track into IGV:", e$message), type = "error")
+        })
       } else {
-        print("VCF file not found.")
         showNotification("VCF file not found.", type = "error")
-        return(NULL)  # Stop execution if the file is not found
       }
-      
-      # Increment progress bar
-      incProgress(0.2)
-      
-      # Read the VCF file
-      tryCatch({
-        vcf_data <- readVcf(vcf_file, "galGal6")
-        print("VCF file loaded successfully.")
-        showNotification("VCF file loaded successfully.", type = "message")
-      }, error = function(e) {
-        print(paste("Error reading VCF file:", e$message))
-        showNotification(paste("Error reading VCF file:", e$message), type = "error")
-        return(NULL)
-      })
-      
-      # Increment progress bar
-      incProgress(0.4)
-      
-      # Extract relevant fields: CHROM, POS, REF, ALT
-      tryCatch({
-        snp_data <- rowRanges(vcf_data)
-        fixed_fields <- as.data.frame(fixed(vcf_data))  # Extract REF, ALT
-        snp_df <- data.frame(
-          chr = as.character(seqnames(snp_data)),
-          start = start(snp_data),
-          end = end(snp_data),
-          REF = fixed_fields$REF,
-          ALT = sapply(fixed_fields$ALT, function(x) paste(x, collapse = ","))
-        )
-        print("SNP data extracted successfully.")
-        showNotification("SNP data extracted successfully.", type = "message")
-      }, error = function(e) {
-        print(paste("Error extracting SNP data:", e$message))
-        showNotification(paste("Error extracting SNP data:", e$message), type = "error")
-        return(NULL)
-      })
-      
-      # Increment progress bar
-      incProgress(0.6)
-      
-      # Load the track into IGV
-      tryCatch({
-        loadBedTrack(
-          session = session,
-          id = "igvShiny",
-          trackName = "SNP ASE Track",
-          tbl = snp_df,
-          color = "darkgreen",
-          trackHeight = 70,
-          deleteTracksOfSameName = TRUE
-        )
-        print("Track loaded successfully.")
-        showNotification("Track loaded successfully.", type = "message")
-      }, error = function(e) {
-        print(paste("Error loading track into IGV:", e$message))
-        showNotification(paste("Error loading track into IGV:", e$message), type = "error")
-      })
-      
-      # Increment progress bar to finish
-      incProgress(1)
-      
     })
-    
   })
-  
+
   observeEvent(input$load_gff, {
-    
+    gff_file <- "browser_data_for_app/genomeAnnoatation_gallus.updated.gff"
+
     withProgress(message = 'Loading GFF Track...', value = 0, {
-      incProgress(0.2)
-      
       tryCatch({
-        if (!is.null(gff_df) && nrow(gff_df) > 0) {
+        if (file.exists(gff_file)) {
+          gff_data <- rtracklayer::import(gff_file, format = "gff")
+          gff_df <- as.data.frame(gff_data)
           
-          incProgress(0.5)
-          
-          # Load the track into IGV
+          colnames(gff_df)[colnames(gff_df) == "seqnames"] <- "chr"
+          gff_df <- gff_df %>%
+            left_join(chrom_map, by = c("chr" = "Chrm_ncbi")) %>%
+            mutate(chr = Chromosome) %>%
+            dplyr::select(-Chromosome)
+
           loadBedTrack(
             session = session,
             id = "igvShiny",
@@ -2992,18 +3116,17 @@ server <- function(input, output, session) {
             trackHeight = 70,
             deleteTracksOfSameName = TRUE
           )
-          
+
           incProgress(1)
         } else {
-          showNotification("Error: No data to load.", type = "error")
+          showNotification("GFF file not found.", type = "error")
         }
       }, error = function(e) {
         showNotification(paste("Error loading GFF Track:", e$message), type = "error")
       })
     })
   })
-  
-  
+
   
   ##############
   
@@ -3035,13 +3158,105 @@ server <- function(input, output, session) {
     showNotification("Gene cart has been cleared.", type = "message")
   })
   
-  output$cart_gene_table <- renderDT({
+  calcTau_custom <- function(expression_matrix) {
+    if (is.vector(expression_matrix)) {
+      expression_matrix <- matrix(expression_matrix, nrow = 1)
+      rownames(expression_matrix) <- genes
+    }
+    tau_values <- apply(expression_matrix, 1, function(x) {
+      if (all(is.na(x)) || sum(x, na.rm = TRUE) == 0) {
+        return(NA)
+      }
+      x_norm <- x / max(x, na.rm = TRUE)
+      tau <- sum(1 - x_norm, na.rm = TRUE) / (length(x) - 1)
+      return(tau)
+    })
+    return(data.frame(gene = rownames(expression_matrix), tau = tau_values))
+  }
+  
+  allele_specific_genes <- reactiveVal()
+  
+  observe({
+    gene_ase_path <- "browser_data_for_app/gene_ase_converted_cleaned_with_strand.bed"
+    gene_ase_data <- rtracklayer::import(gene_ase_path, format = "bed")
+    gene_ase_df <- as.data.frame(gene_ase_data)
+    allele_specific_genes(unique(gene_ase_df$name))
+  })
+  
+  gene_expression_data_tissue_reactive <- reactive({
     genes <- cart_genes()
     if (length(genes) == 0) {
-      return(datatable(data.frame(Gene = "Cart is empty")))
-    } else {
-      return(datatable(data.frame(Gene = genes)))
+      return(NULL)
     }
+    
+    gene_expression_data <- RPKM_data[rownames(RPKM_data) %in% genes, , drop = FALSE]
+    
+    sample_to_tissue <- phenodata %>% dplyr::select(Sample_name, Tissue)
+    
+    common_samples <- intersect(colnames(gene_expression_data), sample_to_tissue$Sample_name)
+    
+    gene_expression_data <- gene_expression_data[, common_samples, drop = FALSE]
+    sample_to_tissue <- sample_to_tissue[sample_to_tissue$Sample_name %in% common_samples, ]
+    
+    sample_to_tissue <- sample_to_tissue[match(common_samples, sample_to_tissue$Sample_name), ]
+    
+    sample_tissue_map <- setNames(sample_to_tissue$Tissue, sample_to_tissue$Sample_name)
+    
+    gene_expression_data_tissue_list <- lapply(unique(sample_tissue_map), function(tissue) {
+      samples_in_tissue <- names(sample_tissue_map)[sample_tissue_map == tissue]
+      if (length(samples_in_tissue) == 1) {
+        as.matrix(gene_expression_data[, samples_in_tissue, drop = FALSE])
+      } else {
+        rowMeans(gene_expression_data[, samples_in_tissue, drop = FALSE], na.rm = TRUE)
+      }
+    })
+    
+    gene_expression_data_tissue <- do.call(cbind, gene_expression_data_tissue_list)
+    colnames(gene_expression_data_tissue) <- unique(sample_tissue_map)
+    rownames(gene_expression_data_tissue) <- rownames(gene_expression_data)
+    
+    gene_expression_data_tissue <- as.matrix(gene_expression_data_tissue)
+    
+    gene_expression_data_tissue[is.na(gene_expression_data_tissue)] <- 0
+    
+    return(gene_expression_data_tissue)
+  })
+  
+  allele_specific_genes_reactive <- reactive({
+    gene_ase_path <- "browser_data_for_app/gene_ase_converted_cleaned_with_strand.bed"
+    gene_ase_data <- rtracklayer::import(gene_ase_path, format = "bed")
+    gene_ase_df <- as.data.frame(gene_ase_data)
+    
+    return(unique(gene_ase_df$name))
+  })
+  
+  output$cart_gene_table <- renderDT({
+    gene_expression_data_tissue <- gene_expression_data_tissue_reactive()
+    if (is.null(gene_expression_data_tissue)) {
+      return(datatable(data.frame(Gene = "Cart is empty")))
+    }
+    
+    tau_scores <- calcTau_custom(gene_expression_data_tissue)
+    
+    tau_values <- tau_scores$tau
+    names(tau_values) <- tau_scores$gene
+    
+    max_tissues <- apply(gene_expression_data_tissue, 1, function(x) {
+      colnames(gene_expression_data_tissue)[which.max(x)]
+    })
+    
+    allele_specific_genes <- allele_specific_genes_reactive()
+    
+    result_df <- data.frame(
+      Gene = rownames(gene_expression_data_tissue),
+      Tau = format(tau_values[rownames(gene_expression_data_tissue)], scientific = TRUE, digits = input$num_of_digits_tau),
+      MaxTissue = max_tissues,
+      #AlleleSpecific = ifelse(rownames(gene_expression_data_tissue) %in% allele_specific_genes, "Yes", "No"), # Commented out for now
+      stringsAsFactors = FALSE,
+      row.names = NULL
+    )
+    
+    return(datatable(result_df, options = list(pageLength = 10)))
   })
   
   observeEvent(input$copy_cart_genes, {
@@ -3065,7 +3280,42 @@ server <- function(input, output, session) {
     } else {
       showNotification("Cart is empty.", type = "warning")
     }
+    
   })
+  
+  output$download_results <- downloadHandler(
+    filename = function() {
+      paste("gene_cart_results", Sys.Date(), ".csv", sep = "")
+    },
+    content = function(file) {
+      gene_expression_data_tissue <- gene_expression_data_tissue_reactive()
+      if (!is.null(gene_expression_data_tissue)) {
+        
+        tau_scores <- calcTau_custom(gene_expression_data_tissue)
+        
+        tau_values <- tau_scores$tau
+        names(tau_values) <- tau_scores$gene
+        
+        max_tissues <- apply(gene_expression_data_tissue, 1, function(x) {
+          colnames(gene_expression_data_tissue)[which.max(x)]
+        })
+        
+        allele_specific_genes <- allele_specific_genes_reactive()
+        
+        result_df <- data.frame(
+          Gene = rownames(gene_expression_data_tissue),
+          Tau = format(tau_values[rownames(gene_expression_data_tissue)], scientific = TRUE, digits = input$num_of_digits_tau),
+          MaxTissue = max_tissues,
+          # AlleleSpecific = ifelse(rownames(gene_expression_data_tissue) %in% allele_specific_genes, "Yes", "No"), # Commented out for now
+          stringsAsFactors = FALSE,
+          row.names = NULL
+        )
+        
+        write.csv(result_df, file, row.names = FALSE)
+      }
+    }
+  )
+  
 }
 
 shinyApp(ui = ui, server = server)
