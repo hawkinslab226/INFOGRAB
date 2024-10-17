@@ -467,7 +467,8 @@ ui <- navbarPage(
                           actionButton("search_gene_heatmap", "Search"),
                           actionButton("random_gene_heatmap", "Search 10 Random Genes"),
                           actionButton("clear_search", "Clear"),
-                          actionButton("add_to_cart_heatmap", "Grab Genes"),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          actionButton("add_to_cart_heatmap", "Grab Displayed Genes"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           selectInput("color_scale", "Select Color Scale",
                                       choices = c("Blue-White-Red" = "blue_white_red",
@@ -493,8 +494,6 @@ ui <- navbarPage(
                         )
                       )
              ),
-             
-             
              
              tabPanel("PCA",
                       sidebarLayout(
@@ -717,7 +716,7 @@ ui <- navbarPage(
                downloadButton("download_results", "Download Genes (CSV)")
              ),
              mainPanel(
-               DTOutput("cart_gene_table")
+               withLoader(DTOutput("cart_gene_table"), loader = "dnaspin")
              )
            )
   ),
@@ -2074,21 +2073,8 @@ server <- function(input, output, session) {
   
   # Add to Cart functionality for the Heatmap tab
   observeEvent(input$add_to_cart_heatmap, {
-    data <- filtered_data_combined()
-    req(data)
     
-    # Get the genes currently displayed in the heatmap
-    search_genes <- search_genes_heatmap()
-    
-    if (!is.null(search_genes) && length(search_genes) > 0) {
-      top_genes <- search_genes
-    } else {
-      top_genes <- data %>% 
-        head(as.numeric(input$top_n)) %>% 
-        pull(Gene)
-    }
-    
-    add_to_cart(top_genes)
+    add_to_cart(ordered_genes())
     
     showNotification("Genes grabbed.", type = "message")
   })
@@ -2496,21 +2482,18 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$transfer_to_heatmap, {
-    # Capture the genes being transferred from the barplot
+
     transferred_genes <- strsplit(input$barplot_searched_gene, ",\\s*")[[1]]
     transferred_genes <- toupper(transferred_genes)
     
-    # Subset RPKM data based on these transferred genes
     rpkm_filtered <- RPKM_data %>%
       filter(rownames(.) %in% transferred_genes)
     
-    # Get all the samples for all tissues
     samples <- phenodata %>%
       pull(Sample_name)
     
     samples <- samples[samples %in% colnames(rpkm_filtered)]
     
-    # Filter the RPKM data by these samples
     rpkm_filtered <- rpkm_filtered[, samples, drop = FALSE]
     
     colnames(rpkm_filtered) <- gsub("Sample_", "", colnames(rpkm_filtered))
@@ -2643,6 +2626,7 @@ server <- function(input, output, session) {
   output$tissue_specific_heatmap <- renderPlot({
     req(input$tissue_choice)
     current_plot(NULL)
+    ts_heatmap_genes(NULL)
     
     selected_tissues <- input$tissue_choice
     
@@ -2731,6 +2715,8 @@ server <- function(input, output, session) {
     
     ordered_tissue_specific_genes(heatmap$tree_row$labels[heatmap$tree_row$order])
     
+    ts_heatmap_genes()
+    
     current_plot(heatmap)
     
     print(heatmap)
@@ -2788,26 +2774,8 @@ server <- function(input, output, session) {
   
   
   observeEvent(input$add_to_cart_tissue_specific_heatmap, {
-    req(input$tissue_choice, input$n_variable_genes)
     
-    selected_tissues <- input$tissue_choice
-    
-    samples <- phenodata %>%
-      filter(Tissue %in% selected_tissues) %>%
-      pull(Sample_name)
-    
-    samples <- samples[samples %in% colnames(RPKM_data)]
-    
-    rpkm_filtered <- RPKM_data[, samples, drop = FALSE]
-    
-    non_zero_genes <- apply(rpkm_filtered, 1, function(row) !all(row == 0))
-    rpkm_filtered <- rpkm_filtered[non_zero_genes, ]
-    
-    variances <- apply(t(rpkm_filtered), 2, var)
-    top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
-    top_genes <- rownames(rpkm_filtered)[top_genes]
-    
-    add_to_cart(top_genes)
+    add_to_cart(ordered_tissue_specific_genes())
     
     showNotification("Genes grabbed.", type = "message")
   })
