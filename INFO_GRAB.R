@@ -58,8 +58,6 @@ if (!require(igvShiny)) {
   install_github("paul-shannon/igvShiny")
 }
 
-
-
 lapply(required_packages, library, character.only = TRUE)
 
 library(shiny)
@@ -332,7 +330,7 @@ ui <- navbarPage(
   tabPanel("Differential Analysis",
            tabsetPanel(
              id = "differential_analysis_tab",
-             tabPanel("Home",
+             tabPanel("DE Home",
                       sidebarLayout(
                         sidebarPanel(
                           selectInput("tissue_select1", "Tissue 1", choices = tissue_names),
@@ -522,7 +520,7 @@ ui <- navbarPage(
              ),
              
              conditionalPanel(
-               condition = "input.differential_analysis_tab != 'Home'",
+               condition = "input.differential_analysis_tab != 'DE Home'",
                div(
                  id = "tissue-selection-menu",
                  wellPanel(
@@ -721,8 +719,6 @@ ui <- navbarPage(
            )
   ),
   
-              
-  
   tabPanel("Help",
            fluidPage(
              h2("App Version and Information"),
@@ -733,8 +729,8 @@ ui <- navbarPage(
                tabPanel("Differential Analysis Help",
                         mainPanel(
                           h2("Analysis Help"),
-                          h3("Home"),
-                          p("In the 'Home' tab, you can select two tissues to compare and adjust the analysis parameters."),
+                          h3("DE Home"),
+                          p("In the 'DE Home' tab, you can select two tissues to compare and adjust the analysis parameters."),
                           tags$ul(
                             tags$li(tags$b("Tissue 1 and Tissue 2:"), " Select the tissues you want to compare."),
                             tags$li(tags$b("FDR:"), " Choose the false discovery rate threshold for filtering the results."),
@@ -1155,8 +1151,6 @@ server <- function(input, output, session) {
     HTML(equation)
   })
   
-  
-  
   # Summary of data
   output$summary_info <- renderUI({
     data <- filtered_data_combined()
@@ -1551,7 +1545,7 @@ server <- function(input, output, session) {
   })
   
   
-  # Ensure that when tissues are changed on the Home tab, the menu reflects those changes
+  # Ensure that when tissues are changed on the DE Home tab, the menu reflects those changes
   observe({
     updateSelectInput(session, "tissue_select1_menu", selected = input$tissue_select1)
     updateSelectInput(session, "tissue_select2_menu", selected = input$tissue_select2)
@@ -2057,8 +2051,6 @@ server <- function(input, output, session) {
     }
   })
   
-  
-  
   output$download_heatmap_plot <- downloadHandler(
     filename = function() {paste('heatmap.png')},
     content = function(file) {
@@ -2299,7 +2291,6 @@ server <- function(input, output, session) {
   ### Gene Expression
   
   options(ragg.max_dim = 10000000)
-
   
   barplot_data <- reactiveVal(NULL)
   current_plot <- reactiveVal(NULL)
@@ -2626,7 +2617,6 @@ server <- function(input, output, session) {
   output$tissue_specific_heatmap <- renderPlot({
     req(input$tissue_choice)
     current_plot(NULL)
-    ts_heatmap_genes(NULL)
     
     selected_tissues <- input$tissue_choice
     
@@ -2714,8 +2704,6 @@ server <- function(input, output, session) {
     )
     
     ordered_tissue_specific_genes(heatmap$tree_row$labels[heatmap$tree_row$order])
-    
-    ts_heatmap_genes()
     
     current_plot(heatmap)
     
@@ -3464,7 +3452,7 @@ server <- function(input, output, session) {
   
     text(x = bar_pos, 
          y = par("usr")[3] - 0.1 * max(top_tissues_df$Frequency),  
-         labels = top_tissues_df$Tissue[1:5], 
+         labels = top_tissues_df$Tissue[1:10], 
          srt = 45, 
          adj = 1, 
          xpd = TRUE,  
