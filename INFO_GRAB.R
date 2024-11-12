@@ -1,15 +1,6 @@
 
 #setwd("~/Documents/Internship/InfoGrab")
 
-# 10/1 To Do:
-
-# Look at genome browser
-# Try adding sample files to add
-# Fix pop-up menu in differential expression graph (Server code works, but ui needs to be fixed)
-
-# FINISH THE APP
-# Work on help section
-
 required_packages <- c(
   "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
   "ggplot2", "pheatmap", "dplyr", "readr", "readxl", "DT", "stringr", 
