@@ -33,6 +33,7 @@ lapply(required_packages, install_if_missing)
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager")
   BiocManager::install("VariantAnnotation", force = TRUE)
+  BiocManager::install("preprocessCore")
 }
 
 if (!require(DESeq2)) {
@@ -49,8 +50,9 @@ if (!require(rtracklayer)) {
 }
 
 if (!require(tispec)) {
-  library(devtools)
-  install_github('roonysgalbi/tispec')
+ library(devtools)
+ library(remotes)
+ remotes::install_github('roonysgalbi/tispec')
 }
 
 if (!require(igvShiny)) {
@@ -100,6 +102,8 @@ library(igvShiny)
 library(rtracklayer)
 library(VariantAnnotation)
 library(Rsamtools)
+library(preprocessCore)
+
 
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
@@ -824,7 +828,7 @@ ui <- navbarPage(
                           h3("Heatmap Visualization"),
                           p("Visualizes the most variable tissue-specific genes across selected tissues."),
                           tags$ul(
-                            tags$li(tags$b("Tau Scores:"), " Only genes with Tau scores of ", tags$b("0.8"), " or higher are included."),
+                            tags$li(tags$b("Tau Scores:"), " Only genes with Tau scores of ", tags$b("0.85"), " or higher are included."),
                             tags$li(tags$b("Clustering:"), " Genes are clustered by correlation and tissues are ordered by system.")
                           ),
                           h3("Interactive Heatmap Features"),
@@ -2063,7 +2067,6 @@ server <- function(input, output, session) {
     }
   )
   
-  # Add to Cart functionality for the Heatmap tab
   observeEvent(input$add_to_cart_heatmap, {
     
     add_to_cart(ordered_genes())
@@ -2635,7 +2638,7 @@ server <- function(input, output, session) {
     
     tau_scores <- calcTau(rpkm_filtered)
     
-    filtered_tau <- tau_scores[tau_scores$tau >= 0.8, ]
+    filtered_tau <- tau_scores[tau_scores$tau >= 0.85, ]
     rpkm_filtered <- rpkm_filtered[rownames(rpkm_filtered) %in% rownames(filtered_tau), ]
     
     rpkm_tau <- as.matrix(rpkm_filtered)
@@ -3459,8 +3462,6 @@ server <- function(input, output, session) {
          cex = 0.8)  
   })
   
-  
-
   observeEvent(input$add_genes_button, {
     new_genes <- unlist(strsplit(input$add_genes_input, ",\\s*"))
     
