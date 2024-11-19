@@ -23,8 +23,10 @@ lapply(required_packages, install_if_missing)
 
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager")
-  BiocManager::install("VariantAnnotation", force = TRUE)
-  BiocManager::install("preprocessCore")
+  BiocManager::install(c("Rhtslib", "genefilter", "rtracklayer", "DESeq2", 
+                       "VariantAnnotation", "Rsamtools", 
+                       "GenomicAlignments", "BSgenome", 
+                       "preprocessCore", "GenomicFeatures", "edgeR"), force = T)
 }
 
 if (!require(DESeq2)) {
@@ -108,6 +110,8 @@ if (!exists("phenodata")) {
   phenodata <- read.csv("data/Pheno_data071523.csv")
 }
 
+phenodata$Tissue
+
 if (!exists("cnt_data")) {
   cnt_data <- read.delim("data/all_cnt_0625.txt")
 }
@@ -115,33 +119,33 @@ if (!exists("cnt_data")) {
 mycolors1 <- c(
   `Kidney`="#43009A",
   `Trachea`="#990099",
-  `BCell`="#0DFAFA",
-  `TCell(spleen)`="#13B7B7",
+  `B cells`="#0DFAFA",
+  `TCell (Spleen)`="#13B7B7",
   `Bursa`="#004C99",
   `Thymus`="#2685E4",
-  `Macrophage(D0)`="#F02B6D",
-  `Macrophage(D3)`="#FF0091",
-  `Macrophage(D6)`="#F572BC",
-  `Macrophage(lung)`="#D06AAA",
-  `Monocyte(blood)`="#91155B",
+  `Macrophage at Day 0 Differentiation (D0)`="#F02B6D",
+  `Macrophage at Day 3 Differentiation (D3)`="#FF0091",
+  `Macrophage at Day 6 Differentiation (D6)`="#F572BC",
+  `Macrophage (From Lung)`="#D06AAA",
+  `Monocyte (Blood)`="#91155B",
   `Ileum`="#98D55A",
   `Jejunum`="#4C9900",
-  `Proximal.Cecum`="#CCFF99",
-  `Iliotibialis.lateralis`="#A1122A",
-  `Pectoralis.major`="#FFCCCC",
+  `Proximal Cecum`="#CCFF99",
+  `Iliotibialis Lateralis (M.Tight)`="#A1122A",
+  `Pectoralis Major (M.Breast)`="#FFCCCC",
   `Isthmus`="#FF8000",
   `Magnum`="#DE5100",
-  `Shell.Gland`="#FFC78E",
+  `Shell Gland`="#FFC78E",
   `Ovary`="#CCCC00"
 )
 
 mycolors2 <- c(
-  `Immune` = "#31E1F7", 
-  `Respiratory` = "#400D51", 
-  `Excretory` ="#FF7777",
-  `Muscular` = "#D800A6",
-  `Intestine` ="#6499E9", 
-  `Reproductive` = "#836FFF")
+  `Immune System (Tissues and Cells)` = "#31E1F7", 
+  `Respiratory System` = "#400D51", 
+  `Excretory System` ="#FF7777",
+  `Muscular System (Chicken Meat)` = "#D800A6",
+  `Intestinal System` ="#6499E9", 
+  `Reproductive Female Duct System` = "#836FFF")
 
 ############################################################
 
@@ -313,8 +317,8 @@ ui <- navbarPage(
                  h2("INFO GRAB"),
                  h3("INteractive Functional Ontology for Gene Regulation Analysis and Browsing"),
                  tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                 h5("Welcome to INFO GRAB. This app allows you to perform differential expression analysis and 
-                   visualize the results through various plots, looking at tissues in the chicken (Gallus gallus)."),
+                 h5(tags$b("Welcome to INFO GRAB."), " This Shiny Application allows you to perform differential expression analysis and 
+                   data visualization of the transcriptome, looking at tissues in the chicken (Gallus gallus)."),
                  tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                  img(src = "chicken.png", id = "chicken-image", style = "width: 40%; max-width: 100%; height: auto;")
              ),
@@ -664,8 +668,6 @@ ui <- navbarPage(
            )
   ),
   
-  
-  
   tabPanel("Genes",
            sidebarLayout(
              sidebarPanel(
@@ -717,192 +719,194 @@ ui <- navbarPage(
   tabPanel("Help",
            fluidPage(
              h2("App Version and Information"),
-             
              tabsetPanel(
                
-               # Differential Analysis Help Tab
-               tabPanel("Differential Analysis Help",
+               tabPanel("Differential Expression (DE) Analysis Help",
                         mainPanel(
-                          h2("Analysis Help"),
-                          h3("DE Home"),
-                          p("In the 'DE Home' tab, you can select two tissues to compare and adjust the analysis parameters."),
-                          tags$ul(
-                            tags$li(tags$b("Tissue 1 and Tissue 2:"), " Select the tissues you want to compare."),
-                            tags$li(tags$b("FDR:"), " Choose the false discovery rate threshold for filtering the results."),
-                            tags$li(tags$b("FC (log2 fold change):"), " Set the fold change threshold for filtering the results."),
-                            tags$li(tags$b("Number of digits:"), " Specify the number of decimal places for displaying values."),
-                            tags$li(tags$b("Download CSV:"), " Download the filtered data as a CSV file."),
-                            tags$li(tags$b("Search for genes:"), " Enter genes to search in the results."),
-                            tags$li(tags$b("Search 10 Random Genes:"), " Display information for 10 randomly selected genes."),
-                            tags$li(tags$b("Clear:"), " Clear the gene search input."),
-                            tags$li(tags$b("Fold Change Equation:"), " Displays the log2 fold change equation for the selected tissues.")
-                          ),
-                          h3("Correlation Plot"),
-                          p("The 'Correlation Plot' tab allows you to visualize the correlation between expression levels of genes across different tissues."),
-                          tags$ul(
-                            tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues' and 'Tissues by System'."),
-                            tags$li(tags$b("Use Filtered Data:"), " Option to use filtered data based on selected FDR and FC thresholds."),
-                            tags$li(tags$b("Select System:"), " Select a specific system to view correlation within that system."),
-                            tags$li(tags$b("Correlation Plot Legend:"), " The plot includes a legend that matches the tissue colors with their corresponding tissues.")
-                          ),
-                          h3("Volcano Plot"),
-                          p("The 'Volcano Plot' tab allows you to visualize the results of the differential expression analysis."),
-                          tags$ul(
-                            tags$li(tags$b("Search for gene:"), " Enter a gene name to highlight it on the plot."),
-                            tags$li(tags$b("Labeling Options:"), " Choose between basic or advanced labeling options for the plot."),
-                            tags$li(tags$b("Background:"), " Choose the background color for the plot."),
-                            tags$li(tags$b("Download PNG:"), " Download the volcano plot as a PNG file."),
-                            tags$li(tags$b("Advanced Labeling Options:"), " Allows the user to specify the number of labels on each side of the volcano plot separately.")
-                          ),
-                          h3("Heatmap"),
-                          p("The 'Heatmap' tab provides a heatmap visualization of the expression levels of genes."),
-                          tags$ul(
-                            tags$li(tags$b("Sort by:"), " Choose to sort the genes by FDR or fold change."),
-                            tags$li(tags$b("Number of Top Genes:"), " Select the number of top genes to include in the heatmap."),
-                            tags$li(tags$b("Search for Specific Genes:"), " Enter gene names (comma-separated) to highlight on the heatmap."),
-                            tags$li(tags$b("Random Gene Search:"), " Search for 10 random genes and highlight them on the heatmap."),
-                            tags$li(tags$b("Select Color Scale:"), " Choose the color scale for the heatmap."),
-                            tags$li(tags$b("Download PNG:"), " Download the heatmap as a PNG file.")
-                          ),
-                          h3("PCA"),
-                          p("The 'PCA' tab allows you to perform Principal Component Analysis on the selected tissues."),
-                          tags$ul(
-                            tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues', 'Tissues by System', and 'All Tissues'."),
-                            tags$li(tags$b("Select System:"), " Select a specific system for PCA analysis when 'Tissues by System' mode is selected."),
-                            tags$li(tags$b("Download PCA Plot:"), " Download the PCA plot as a PNG file.")
-                          ),
-                          h3("Parameters Explanation"),
-                          tags$p("False Discovery Rate (FDR): The expected proportion of false discoveries among the rejected hypotheses."),
-                          tags$p("Fold Change (FC): A measure describing how much a quantity changes between an original and a subsequent measurement.")
-                        )
-               ),
-               
-               # Gene Expression Visualization Help Tab
-               tabPanel("Gene Expression Visualization Help",
-                        mainPanel(
-                          h2("Gene Expression Visualization Help"),
+                          h2("Differential Expression Analysis"),
                           h3("Overview"),
-                          p("The 'Gene Expression' tab allows users to visualize the average expression levels of selected genes across different tissues using bar plots."),
-                          h3("Selecting Tissues and Genes"),
+                          p("INFO GRAB’s Differential Expression (DE) Analysis module leverages RNA-seq count data and phenotype metadata to enable tissue-to-tissue gene expression comparisons. Utilizing DESeq2 for statistical testing, this feature identifies significant expression differences across tissue types."),
+                          
+                          h3("Features and Parameters"),
                           tags$ul(
-                            tags$li(tags$b("Tissue 1 and Tissue 2:"), " Select two tissues for comparison."),
-                            tags$li(tags$b("Top Genes:"), " The top 5 commonly expressed genes are automatically selected and displayed."),
-                            tags$li(tags$b("Search for Genes:"), " You can search for specific genes by entering their names into the search box."),
-                            tags$li(tags$b("Search 5 Random Genes:"), " Display 5 random genes from the dataset."),
-                            tags$li(tags$b("Grab Genes:"), " Grab the genes displayed in the bar plot to the list of grabbed gene."),
-                            tags$li(tags$b("Transfer to Heatmap:"), " Transfer searched genes to the heatmap for further exploration.")
+                            tags$li(tags$b("Tissue Selection:"), " Select 'Tissue 1' and 'Tissue 2' to initiate comparison. The app calculates the corresponding log2 fold change between the selected tissues."),
+                            tags$li(tags$b("FDR (False Discovery Rate):"), " Set an FDR threshold to filter genes based on significance, helping control the expected false discovery rate."),
+                            tags$li(tags$b("Fold Change (FC) Threshold:"), " Specify a minimum log2 fold change, focusing the analysis on genes with large expression differences."),
+                            tags$li(tags$b("Number of Digits:"), " Choose the decimal precision for values displayed in the results."),
+                            tags$li(tags$b("Search Genes:"), " Search for specific genes by name to view expression details within the DE results."),
+                            tags$li(tags$b("Random Gene Display:"), " View information for 10 randomly selected genes from the results."),
+                            tags$li(tags$b("Download CSV:"), " Export filtered DE results in CSV format for further analysis."),
+                            tags$li(tags$b("Fold Change Equation:"), " View the log2 fold change formula used for the selected tissues.")
                           ),
-                          h3("Bar Plot"),
-                          p("The bar plot shows the average expression levels of selected genes across tissues, allowing for easy comparison."),
-                          h3("Transferring to Heatmap"),
-                          p("Selected genes can be transferred to the heatmap for detailed visualization of expression patterns."),
-                          tags$ul(
-                            tags$li(tags$b("Heatmap Modal:"), " The heatmap is displayed in a modal dialog with clustering and color-coded annotations."),
-                            tags$li(tags$b("Download Heatmap:"), " Download the heatmap as a PNG file.")
-                          )
+                          
+                          h3("Visual Summaries"),
+                          p("INFO GRAB presents interactive tables of differentially expressed genes, categorized by significance, fold change, and p-values. Each table allows sorting and filtering for easy data exploration."),
+                          
+                          h3("Technical Process"),
+                          p("INFO GRAB’s DE pipeline uses DESeq2 for data normalization and statistical testing, making it compatible with FAANG data standards for reliable cross-tissue comparisons. The DE module aligns count data with phenotype metadata, applying filters to eliminate low-expression genes and ensure accuracy.")
                         )
                ),
                
-               # Tissue-Specific Analysis Help Tab
+               tabPanel("Correlation Plot Help",
+                        mainPanel(
+                          h2("Correlation Plot"),
+                          h3("Overview"),
+                          p("This feature visualizes the correlation between gene expression profiles across various tissues, helping researchers assess tissue-specific expression similarity or divergence."),
+                          
+                          h3("Features and Parameters"),
+                          tags$ul(
+                            tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues' or 'Tissues by System'. The former examines correlation between two selected tissues, while the latter groups tissues by biological system for within-system correlation analysis."),
+                            tags$li(tags$b("Use Filtered Data:"), " Apply FDR and FC filters to include only genes meeting the selected criteria. If no genes pass, the app defaults to the top 1,000 most variable genes."),
+                            tags$li(tags$b("System Selection:"), " Choose a biological system to analyze intra-system correlations, such as immune or reproductive systems."),
+                            tags$li(tags$b("Correlation Plot Legend:"), " Displays a legend aligning tissue colors with corresponding tissues.")
+                          ),
+                          
+                          h3("Plot Details"),
+                          p("The correlation plot displays pairwise tissue comparisons, with each diagonal showing a density plot for individual tissue expression. The upper panels present correlation coefficients for tissue pairs, helping to identify expression pattern relationships."),
+                          
+                          h3("Download Option"),
+                          p("The correlation plot can be downloaded as a high-resolution PNG file.")
+                        )
+               ),
+               
+               tabPanel("Volcano Plot Help",
+                        mainPanel(
+                          h2("Volcano Plot"),
+                          h3("Overview"),
+                          p("This visualization presents differential expression results, plotting each gene by log2 fold change and -log10(p-value), making it easy to identify genes with high significance and substantial expression differences."),
+                          
+                          h3("Features and Customization"),
+                          tags$ul(
+                            tags$li(tags$b("Search Gene:"), " Search for specific genes to highlight on the volcano plot."),
+                            tags$li(tags$b("Labeling Options:"), " Select 'basic' for standard gene labels or 'advanced' to control labels on each side of the plot."),
+                            tags$li(tags$b("Background Color:"), " Customize the plot background for enhanced visibility."),
+                            tags$li(tags$b("Download PNG:"), " Export the volcano plot as a high-resolution PNG file.")
+                          ),
+                          
+                          h3("Advanced Labeling"),
+                          p("Advanced labeling allows independent selection of genes to label on each side of the plot, differentiating genes upregulated in 'Tissue 1' and 'Tissue 2'. Users can select top genes by FDR or fold change.")
+                        )
+               ),
+               
+               tabPanel("Heatmap Help",
+                        mainPanel(
+                          h2("Heatmap"),
+                          h3("Overview"),
+                          p("INFO GRAB’s heatmap feature visualizes gene expression across selected tissues, providing a comprehensive view of relative expression levels."),
+                          
+                          h3("Parameters and Customization"),
+                          tags$ul(
+                            tags$li(tags$b("Sort by FDR or Fold Change:"), " Choose to prioritize genes based on either FDR or log2 fold change."),
+                            tags$li(tags$b("Top Genes:"), " Define the number of highly expressed genes to display in the heatmap."),
+                            tags$li(tags$b("Search Genes:"), " Search for specific genes by name to locate and highlight them."),
+                            tags$li(tags$b("Random Genes:"), " Display 10 randomly chosen genes for exploratory analysis."),
+                            tags$li(tags$b("Color Scale:"), " Customize the color gradient to reflect expression levels.")
+                          ),
+                          
+                          h3("Interactive Features and Download"),
+                          p("The heatmap supports brushing and selection of genes, enabling users to save subsets for further analysis. It is also downloadable as a PNG file.")
+                        )
+               ),
+               
+               tabPanel("PCA Help",
+                        mainPanel(
+                          h2("Principal Component Analysis (PCA)"),
+                          h3("Overview"),
+                          p("PCA visualizes variance in gene expression across tissues, displaying principal components to assess relationships between samples."),
+                          
+                          h3("PCA Modes and Options"),
+                          tags$ul(
+                            tags$li(tags$b("Select Mode:"), " Choose between 'Selected Tissues', 'Tissues by System', or 'All Tissues'. This controls whether the PCA focuses on specific tissues, systems, or all tissues."),
+                            tags$li(tags$b("System Selection:"), " Select a biological system for PCA if 'Tissues by System' mode is chosen."),
+                            tags$li(tags$b("Top Variable Genes:"), " INFO GRAB selects the 1,000 genes with the highest variance to reduce data complexity."),
+                            tags$li(tags$b("Download Plot:"), " Save the PCA plot as a PNG file.")
+                          ),
+                          
+                          h3("Visualization Details"),
+                          p("Each PCA plot displays samples as points, colored by tissue and shaped by system, allowing for immediate assessment of clustering and variance patterns across tissues.")
+                        )
+               ),
+               
                tabPanel("Tissue-Specific Analysis Help",
                         mainPanel(
-                          h2("Tissue-Specific Analysis Help"),
+                          h2("Tissue-Specific Expression Analysis"),
                           h3("Overview"),
-                          p("The 'Tissue-Specific Analysis' tab visualizes tissue-specific genes across tissues and systems using heatmaps."),
-                          h3("Selecting Systems and Tissues"),
+                          p("This module identifies genes with tissue-specific expression patterns based on tau scores, which quantify the concentration of gene expression in specific tissues."),
+                          
+                          h3("Features"),
                           tags$ul(
-                            tags$li(tags$b("System Choice:"), " Select one or more biological systems to filter the tissues."),
-                            tags$li(tags$b("All Systems:"), " Select 'All Systems' to include all available tissues."),
-                            tags$li(tags$b("Tissue Choice:"), " Choose tissues to visualize."),
-                            tags$li(tags$b("Number of Variable Genes:"), " Specify the number of most variable genes to display.")
+                            tags$li(tags$b("System and Tissue Selection:"), " Select biological systems and tissues to narrow down tissue-specific genes for analysis."),
+                            tags$li(tags$b("Tau Score Threshold:"), " Set to 0.85, focusing on genes with high tissue-specific expression."),
+                            tags$li(tags$b("Top Variable Genes:"), " Specify the number of highly variable genes to include based on expression variance.")
                           ),
-                          h3("Heatmap Visualization"),
-                          p("Visualizes the most variable tissue-specific genes across selected tissues."),
-                          tags$ul(
-                            tags$li(tags$b("Tau Scores:"), " Only genes with Tau scores of ", tags$b("0.85"), " or higher are included."),
-                            tags$li(tags$b("Clustering:"), " Genes are clustered by correlation and tissues are ordered by system.")
-                          ),
-                          h3("Interactive Heatmap Features"),
-                          p("Explore tissue-specific gene expression interactively by brushing genes."),
-                          h3("Grabbed Genes"),
-                          p("Selected genes can be added to the genes of interest list for further analysis.")
+                          
+                          h3("Interactive Heatmap"),
+                          p("The heatmap is clustered by gene and tissue, with adjustable color scales to show tissue-specific expression profiles. Genes can be brushed for selection and saved for further exploration.")
                         )
                ),
                
-               # Genome Browser Help Tab
-               tabPanel("Genome Browser Help",
+               tabPanel("Genome Viewer Help",
                         mainPanel(
-                          h2("Genome Browser Help"),
+                          h2("Genome Browser"),
                           h3("Overview"),
-                          p("The Genome Browser allows you to visualize genomic data by uploading or linking to file formats like GFF3, BAM, BED, and VCF."),
+                          p("INFO GRAB’s genome viewer supports multiple file types (GFF3, BAM, BED, VCF) for viewing gene loci, alignments, and variants in the chicken genome. Users can upload custom data or use preloaded tracks."),
+                          
                           h3("Supported File Types"),
                           tags$ul(
-                            tags$li(tags$b("GFF3/GFF:"), " Upload for gene annotations."),
-                            tags$li(tags$b("BAM:"), " Upload for aligned sequencing reads."),
-                            tags$li(tags$b("BED:"), " Upload for defining genomic regions."),
-                            tags$li(tags$b("VCF:"), " Upload for storing genetic variations.")
+                            tags$li(tags$b("GFF3:"), " Gene annotations."),
+                            tags$li(tags$b("BAM:"), " Aligned sequencing reads."),
+                            tags$li(tags$b("BED:"), " Genomic regions."),
+                            tags$li(tags$b("VCF:"), " Genetic variants.")
                           ),
-                          h3("File Upload"),
-                          p("Upload files from your local machine. Supported formats include GFF3, BAM, BED, and VCF."),
-                          h3("Loading Tracks from URLs"),
-                          p("Load tracks directly from URLs."),
-                          h3("Navigating the Genome"),
-                          p("Enter a genomic region in the search field to navigate to specific regions."),
-                          h3("Common Errors"),
+                          
+                          h3("Preloaded Tracks"),
+                          p("INFO GRAB includes gene and SNP Allele-Specific Expression (ASE) tracks, allowing visualization of tissue-specific expression and regulatory variants as separate layers."),
+                          
+                          h3("Common Issues"),
                           tags$ul(
-                            tags$li(tags$b("Unsupported File Type:"), " Ensure that uploaded files are in the supported formats."),
-                            tags$li(tags$b("Chromosome Mapping Errors:"), " If the chromosome mapping file is missing or incorrectly formatted, an error will be shown.")
+                            tags$li(tags$b("File Type Errors:"), " Ensure that uploaded files are compatible formats."),
+                            tags$li(tags$b("Chromosome Mapping:"), " Verify correct chromosome format in uploaded files to match the app’s genome reference.")
                           )
                         )
                ),
                
-               # Gene Cart Help Tab
                tabPanel("Genes Help",
                         mainPanel(
-                          h2("Grabbed Gene and Allele-Specific Expression (ASE) Help"),
-                          h3("Genes List Functionality"),
+                          h2("Gene and Allele-Specific Expression (ASE) Management"),
+                          h3("Overview"),
+                          p("INFO GRAB’s Genes feature allows users to add, organize, and manage genes for further exploration. This includes tau scores for tissue specificity and ASE status."),
+                          
+                          h3("Gene Management and Export"),
                           tags$ul(
-                            tags$li(tags$b("Grab Genes:"), " Add genes from various sections of the app for further analysis."),
-                            tags$li(tags$b("Clearing the List:"), " Clear all genes from the cart."),
-                            tags$li(tags$b("Copying Genes from List:"), " Copy the gene list for use in other applications."),
-                            tags$li(tags$b("Downloading the List:"), "Download a CSV file of your list of genes, associated Tau scores, and maximum expressing tissue."),
+                            tags$li(tags$b("Add Genes:"), " Select and add genes to a list for centralized analysis."),
+                            tags$li(tags$b("Tau Scores:"), " Display tau scores to measure tissue-specificity for each gene."),
+                            tags$li(tags$b("ASE Status:"), " View allele-specific expression data."),
+                            tags$li(tags$b("Download List:"), " Export selected gene data as CSV, including tau scores and expression statistics.")
                           ),
-                          h3("Tau Score Calculation"),
-                          p("The Tau score is a measure of tissue specificity, ranging from 0 to 1, with 1 being more tissue specific.", href = "https://www.washington.edu"),
-                          h3("Displaying and Interacting with Gene Data"),
-                          p("Gene expression data is aggregated by tissue, with Tau scores calculated for each gene."),
+                          
+                          h3("Statistical Summaries"),
+                          p("INFO GRAB displays summary statistics for gene lists, including total count, average tau, and allele-specific gene counts. Visual summaries such as histograms and bar charts show the distribution of tau scores and ASE genes across tissues.")
                         )
                ),
                
-               # Version Tab
                tabPanel("Version",
                         br(),
                         p("Version: 1.0.0"),
-                        p("Developed by: Oliver Brown (ombrown@uw.edu)"),
-                        tags$a(href = "https://www.hawkinslab.org", "Hawkins Lab", target = "_blank"),
+                        p("Developed by: Oliver Brown (ombrown@uw.edu), Andressa Oliveira de Lima, R. David Hawkins")
                ),
                
-               # Credits Tab
                tabPanel("Credits",
-                        h4("Acknowledgments:"),
+                        h4("Acknowledgments"),
                         br(),
-                        h4("Citations:"),
-                        br(),
-                        h6("IGV:"),
+                        h4("Citations"),
                         tags$ul(
-                          tags$li("Robinson JT, Thorvaldsdóttir H, Winckler W, et al. Integrative Genomics Viewer. *Nature Biotechnology* 29, 24–26 (2011)."),
-                          tags$li("Thorvaldsdóttir H, Robinson JT, Mesirov JP. Integrative Genomics Viewer (IGV): high-performance genomics data visualization. *Briefings in Bioinformatics* 14, 178–192 (2013)."),
-                          tags$li("Robinson JT, Thorvaldsdóttir H, Wenger AM, et al. Variant Review with the Integrative Genomics Viewer (IGV). *Cancer Research* 77(21):31-34 (2017)."),
-                          tags$li("Robinson JT, Thorvaldsdóttir H, Turner D, Mesirov JP. igv.js: an embeddable JavaScript implementation of the Integrative Genomics Viewer (IGV). *Bioinformatics* 39(1), btac830 (2023).")
-                        ),
-                        br(),
-                        h6("BioRender:"),
-                        br(),
-                        h6("pcaExplorer:")
+                          tags$li("de Lima, A. O., et al. An Updated Gallus gallus Genome Annotation through Multi-Tissue Transcriptome Analysis (2024).")
+                        )
                )
              )
            )
   )
+  
   
 )
 
@@ -959,28 +963,35 @@ server <- function(input, output, session) {
   # INFO GRAB Tab
   
   output$tissue_display <- renderUI({
-    lapply(names(tissue_by_system), function(system) {
-      list(
-        h3(paste(system, "System")),
-        div(style = "display: flex; flex-wrap: wrap; gap: 15px; align-items: center;",
-            lapply(tissue_by_system[[system]], function(tissue) {
-              div(style = "width: calc(33.33% - 10px); display: flex; align-items: center;",
-                  {
-                    img_path <- paste0(gsub(" ", "_", tissue), ".png")
-                    img_src <- file.path("www", img_path)
-                    if (file.exists(img_src)) {
-                      img(src = img_path, style = "width: 80px; height: auto; margin-right: 13px;")
-                    }
-                  },
-                  actionLink(inputId = paste0("tissue_", gsub(" ", "_", tissue)), 
-                             label = tissue, 
-                             style = "font-size: 18px; text-align: left;")
-              )
-            })
-        ),
-        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
-      )
-    })
+    tagList(
+      div(style = "display: flex; align-items: center; margin-bottom: 30px;",
+          img(src = "systems_logo.png", style = "width: 100px; height: auto; margin-right: 20px;"),
+          h1("Chicken Systems", style = "margin: 0; font-size: 2.5em;") # Larger title
+      ),
+      tags$div(style = "margin-bottom: 20px;"), # Space below the title
+      lapply(names(tissue_by_system), function(system) {
+        list(
+          h3(paste(system)),
+          div(style = "display: flex; flex-wrap: wrap; gap: 15px; align-items: center;",
+              lapply(tissue_by_system[[system]], function(tissue) {
+                div(style = "width: calc(33.33% - 10px); display: flex; align-items: center;",
+                    {
+                      img_path <- paste0(gsub(" ", "_", tissue), ".png")
+                      img_src <- file.path("www", img_path)
+                      if (file.exists(img_src)) {
+                        img(src = img_path, style = "width: 80px; height: auto; margin-right: 13px;")
+                      }
+                    },
+                    actionLink(inputId = paste0("tissue_", gsub(" ", "_", tissue)),
+                               label = tissue,
+                               style = "font-size: 18px; text-align: left;")
+                )
+              })
+          ),
+          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
+        )
+      })
+    )
   })
   
   observe({
@@ -994,7 +1005,7 @@ server <- function(input, output, session) {
             pull(Expressed_Genes)
           
           tissue_data <- RPKM_data %>% 
-            dplyr::select(samples)
+            dplyr::select(all_of(samples))
           
           gene_expression_sums <- tissue_data %>% 
             rowSums(na.rm = TRUE) %>%
@@ -1006,12 +1017,12 @@ server <- function(input, output, session) {
           top_genes <- gene_expression_sums %>% head(5)
           
           showModal(modalDialog(
-            title = paste(tissue, "Information"),
+            title = paste(tissue),
             HTML(
               paste(
-                "Samples: ", paste(samples_display, collapse = ", "), "<br><hr>",
+                "Names: ", paste(samples_display, collapse = ", "), "<br><hr>",
                 "Total Expressed Genes: ", expressed_genes_count, "<br><hr>",
-                "Top 5 Most Expressed Genes (RPKM):<br>",
+                "<b>Top 5 Most Expressed Genes<b> (RPKM):<br>",
                 paste(top_genes$Gene, sep = "", collapse = "<br>")
               )
             ),
@@ -1963,8 +1974,28 @@ server <- function(input, output, session) {
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
+    print("Annotation")
+    print(annotation)
+    
+    # Convert to character if it's a factor with unused levels
+    annotation$Tissue <- as.character(annotation$Tissue)
     present_tissues <- unique(annotation$Tissue)
+    
+    print("Present tissues")
+    print(present_tissues)
+    
+    # Check if all tissues in present_tissues have colors in mycolors1
+    missing_colors <- setdiff(present_tissues, names(mycolors1))
+    if (length(missing_colors) > 0) {
+      stop(paste("Missing colors for tissues:", paste(missing_colors, collapse = ", ")))
+    }
+    
+    # Assign colors
     annotation_colors <- list(Tissue = mycolors1[present_tissues])
+    
+    print("annotation colors")
+    print(annotation_colors)
+    
     
     n_genes <- nrow(rpkm_filtered)
     fontsize_row <- ifelse(n_genes > 50, 7, 14)
@@ -2319,15 +2350,13 @@ server <- function(input, output, session) {
   observeEvent(input$differential_analysis_tab, {
     
     if (input$differential_analysis_tab == "Gene Expression") {
-      # Ensure data is available before proceeding
       req(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
       
       top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
       
       if (length(top_genes) > 0) {
         updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
-        
-        # Add a check to force render if needed
+
         if (!is.null(top_genes) && length(top_genes) > 0) {
           updateBarplotData(top_genes)
         }
@@ -2489,8 +2518,25 @@ server <- function(input, output, session) {
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
+    print("Annotation")
+    print(annotation)
+    
+    annotation$Tissue <- as.character(annotation$Tissue)
     present_tissues <- unique(annotation$Tissue)
+    
+    print("Present tissues")
+    print(present_tissues)
+    
+    missing_colors <- setdiff(present_tissues, names(mycolors1))
+    if (length(missing_colors) > 0) {
+      stop(paste("Missing colors for tissues:", paste(missing_colors, collapse = ", ")))
+    }
+    
     annotation_colors <- list(Tissue = mycolors1[present_tissues])
+    
+    print("annotation colors")
+    print(annotation_colors)
+    
     
     sorted_samples <- annotation %>%
       arrange(Tissue) %>%
@@ -2503,12 +2549,11 @@ server <- function(input, output, session) {
     
     show_genes <- num_genes <= 30
     
-    # Heatmap generation
     showModal(
       modalDialog(
         title = "Gene Expression Heatmap for Searched Genes",
-        size = "l",  # This will make the modal larger
-        plotOutput("heatmap_in_modal", width = "100%", height = "750px"),
+        size = "l",  
+        plotOutput("heatmap_in_modal", width = "95%", height = "750px"),
         downloadButton("download_modal_heatmap", "Download Heatmap"),
         easyClose = TRUE,
         footer = modalButton("Close"),
@@ -2527,7 +2572,7 @@ server <- function(input, output, session) {
         show_colnames = TRUE,
         annotation_col = annotation,
         annotation_colors = annotation_colors,
-        color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  # Example of color scale
+        color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  
         legend_labels = c("low", "medium", "high"),
         fontsize_col = 11,
         fontsize_row = 12,
@@ -2544,18 +2589,17 @@ server <- function(input, output, session) {
         paste("heatmap", ".png", sep = "")
       },
       content = function(file) {
-        # Save the heatmap as a PNG file
         png(file, width = 15, height = 10, units = "in", res = 300)
         pheatmap(
           rpkm_filtered,
           scale = "row",
           cluster_rows = TRUE,
-          cluster_cols = FALSE,  # Prevent clustering of columns to keep pairs together
+          cluster_cols = FALSE,
           show_rownames = TRUE,
           show_colnames = TRUE,
           annotation_col = annotation,
           annotation_colors = annotation_colors,
-          color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  # Example of color scale
+          color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  
           legend_labels = c("low", "medium", "high"),
           fontsize = 10,
           angle_col = 45,
@@ -2640,18 +2684,50 @@ server <- function(input, output, session) {
       rpkm_heatmap <- rpkm_tau[top_genes, ]
     
     
-    annotation <- phenodata %>%
-      filter(Sample_name %in% samples) %>%
-      dplyr::select(Sample_name, Tissue, System) %>%
-      mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
-      column_to_rownames(var = "Sample_name")
-    
-    present_tissues <- unique(annotation$Tissue)
-    
-    annotation_colors <- list(
-      Tissue = mycolors1[unique(annotation$Tissue)],
-      System = mycolors2[unique(annotation$System)]
+      # Process annotation data
+      annotation <- phenodata %>%
+        filter(Sample_name %in% samples) %>%
+        dplyr::select(Sample_name, Tissue, System) %>%
+        mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
+        column_to_rownames(var = "Sample_name")
+      
+      # Ensure Tissue and System columns are characters
+      annotation$Tissue <- as.character(annotation$Tissue)
+      annotation$System <- as.character(annotation$System)
+      
+      # Get unique tissues and systems
+      present_tissues <- unique(annotation$Tissue)
+      present_systems <- unique(annotation$System)
+      
+      print("Present tissues:")
+      print(present_tissues)
+      
+      print("Present systems:")
+      print(present_systems)
+      
+      # Check if all tissues and systems have colors in mycolors1 and mycolors2
+      missing_tissue_colors <- setdiff(present_tissues, names(mycolors1))
+      missing_system_colors <- setdiff(present_systems, names(mycolors2))
+      
+      # Stop with an error if there are missing colors
+      if (length(missing_tissue_colors) > 0) {
+        stop(paste("Missing colors for tissues:", paste(missing_tissue_colors, collapse = ", ")))
+      }
+      if (length(missing_system_colors) > 0) {
+        stop(paste("Missing colors for systems:", paste(missing_system_colors, collapse = ", ")))
+      }
+      
+      # Define annotation colors
+      annotation_colors <- list(
+        Tissue = mycolors1[present_tissues],
+        System = mycolors2[present_systems]
       )
+      
+      print("Annotation colors:")
+      print(annotation_colors)
+      
+    
+    print(annotation_colors)
     
     n_genes <- nrow(rpkm_tau)
     
@@ -3450,7 +3526,7 @@ server <- function(input, output, session) {
          srt = 45, 
          adj = 1, 
          xpd = TRUE,  
-         cex = 0.8)  
+         cex = 0.6)  
   })
   
   observeEvent(input$add_genes_button, {
@@ -3468,8 +3544,6 @@ server <- function(input, output, session) {
       showNotification("Please enter valid gene names.", type = "warning")
     }
   })
-  
-  
 }
 
 shinyApp(ui = ui, server = server)
