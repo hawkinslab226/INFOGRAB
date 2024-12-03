@@ -1,3 +1,8 @@
+###
+# INFO GRAB App
+# Author: Oliver Brown
+# Email: ombrown@uw.edu
+###
 
 #setwd("~/Documents/Internship/InfoGrab")
 
@@ -120,7 +125,7 @@ mycolors1 <- c(
   `Kidney`="#43009A",
   `Trachea`="#990099",
   `B cells`="#0DFAFA",
-  `TCell (Spleen)`="#13B7B7",
+  `T cell (Spleen)`="#13B7B7",
   `Bursa`="#004C99",
   `Thymus`="#2685E4",
   `Macrophage at Day 0 Differentiation (D0)`="#F02B6D",
@@ -538,7 +543,7 @@ ui <- navbarPage(
            )
   ),
   
-  tabPanel("Gene Expression Visualization",
+  tabPanel("Expression Profiles",
            sidebarLayout(
              sidebarPanel(
                textInput("barplot_searched_gene", "Search for genes (comma-separated)", width = '600px', value = "", placeholder = "Search for genes here"),
@@ -632,7 +637,7 @@ ui <- navbarPage(
              fluidRow(
                column(4,
                       selectInput("genome_select", "Select a Genome",
-                                  choices = c("galGal6"), selected = "galGal6"),
+                                  choices = c("GCF_016699485.2", "galGal6"), selected = "GCF_016699485.2"),
                       br(),
                       textInput("genome_browser_search", "Search For a Locus or a Gene"),
                       actionButton("search_button", "Search", class = "btn-primary")
@@ -673,6 +678,7 @@ ui <- navbarPage(
              sidebarPanel(
                tags$textarea(id = "gene_text_area", style = "position: absolute; left: -9999px;"),
                actionButton("copy_cart_genes", "Copy Genes to Clipboard"),
+               downloadButton("download_results", "Download Genes (CSV)"),
                actionButton("clear_cart", "Clear Genes"),
                tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                textInput("add_genes_input", "Add Genes (comma separated):", value = "", placeholder = "Search for genes here"),
@@ -680,8 +686,7 @@ ui <- navbarPage(
                tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                sliderInput("num_of_digits_tau", "Number of digits", value = 3, min = 2, max = 20),
                tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-               
-               # Summary Statistics
+ 
                tags$h3("Summary Statistics"),
                tableOutput("summary_stats_table"),
                
@@ -707,8 +712,6 @@ ui <- navbarPage(
                      tags$li(a(href = "https://pantherdb.org", "PantherDB: Panther Classification System", target = "_blank"))
                    )
                ),
-               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-               downloadButton("download_results", "Download Genes (CSV)")
              ),
              mainPanel(
                withLoader(DTOutput("cart_gene_table"), loader = "dnaspin")
@@ -1752,8 +1755,7 @@ server <- function(input, output, session) {
   )
   
   observeEvent(input$add_de_genes_tissue1, {
-    data <- unfiltered_data() %>%
-      mutate(Gene = toupper(Gene)) 
+    data <- unfiltered_data() 
     
     selected_fdr <- as.numeric(input$selected_fdr)
     selected_fc <- as.numeric(input$selected_fc)
@@ -1779,7 +1781,7 @@ server <- function(input, output, session) {
   
   output$de_genes_tissue1_button <- renderUI({
     req(input$tissue_select1)
-    actionButton("add_de_genes_tissue1", paste("Grab all ppregulated genes from", input$tissue_select1))
+    actionButton("add_de_genes_tissue1", paste("Grab all upregulated genes from", input$tissue_select1))
   })
   
   output$de_genes_tissue2_button <- renderUI({
@@ -1790,8 +1792,7 @@ server <- function(input, output, session) {
   
 
   observeEvent(input$add_de_genes_tissue2, {
-    data <- unfiltered_data() %>%
-      mutate(Gene = toupper(Gene))  # Ensure genes are uppercase
+    data <- unfiltered_data()
     
     selected_fdr <- as.numeric(input$selected_fdr)
     selected_fc <- as.numeric(input$selected_fc)
@@ -1948,8 +1949,8 @@ server <- function(input, output, session) {
     if (!is.null(search_genes) && length(search_genes) > 0) {
       top_genes <- search_genes
     } else {
-      top_genes <- data %>% 
-        head(as.numeric(input$top_n)) %>% 
+      top_genes <- data %>%
+        head(as.numeric(input$top_n)) %>%
         pull(Gene)
     }
     
@@ -1974,28 +1975,15 @@ server <- function(input, output, session) {
       mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
       column_to_rownames(var = "Sample_name")
     
-    print("Annotation")
-    print(annotation)
-    
-    # Convert to character if it's a factor with unused levels
     annotation$Tissue <- as.character(annotation$Tissue)
     present_tissues <- unique(annotation$Tissue)
     
-    print("Present tissues")
-    print(present_tissues)
-    
-    # Check if all tissues in present_tissues have colors in mycolors1
     missing_colors <- setdiff(present_tissues, names(mycolors1))
     if (length(missing_colors) > 0) {
       stop(paste("Missing colors for tissues:", paste(missing_colors, collapse = ", ")))
     }
     
-    # Assign colors
     annotation_colors <- list(Tissue = mycolors1[present_tissues])
-    
-    print("annotation colors")
-    print(annotation_colors)
-    
     
     n_genes <- nrow(rpkm_filtered)
     fontsize_row <- ifelse(n_genes > 50, 7, 14)
@@ -2012,6 +2000,7 @@ server <- function(input, output, session) {
     
     rpkm_filtered(rpkm_filtered)
     
+    # Draw the heatmap
     heatmap <- pheatmap(
       rpkm_filtered, 
       scale = "row",
@@ -2030,8 +2019,15 @@ server <- function(input, output, session) {
       fontsize_col = 14,
       fontsize_row = fontsize_row,
       width = 30,
-      treeheight_row = 0,
       treeheight_col = 0
+    )
+    
+    # Add legend title
+    grid::grid.text(
+      label = "Z-Score",  # Legend title
+      x = .91,           # Adjust position (horizontal)
+      y = 0.786,            # Adjust position (vertical)
+      gp = grid::gpar(fontsize = 12, fontface = "bold")  # Adjust font size and style
     )
     
     ordered_genes(heatmap$tree_row$labels[heatmap$tree_row$order])
@@ -2040,6 +2036,7 @@ server <- function(input, output, session) {
     
     heatmap
   }
+  
   
   output$heatmap_plot <- renderPlot({
     data <- filtered_data_combined()
@@ -2207,8 +2204,15 @@ server <- function(input, output, session) {
       legend.title = element_text(size = 16),
       legend.background = element_rect(fill = "#f0f0f0", color = "black"),
       legend.key = element_rect(fill = "white", color = "black"),
-      legend.key.size = unit(1.5, "lines")
+      legend.key.size = unit(1.5, "lines"),
+      axis.text.x = element_text(size = 14),  # Axis text size
+      axis.text.y = element_text(size = 14),  # Axis text size
+      axis.title.x = element_text(size = 16), # Axis title size
+      axis.title.y = element_text(size = 16), # Axis title size
+      strip.text = element_text(size = 14)    # Row and column label size
     )
+    
+    
   })
   
   
@@ -2298,7 +2302,14 @@ server <- function(input, output, session) {
         geom_polygon(data = pca_df, aes(x = PC1, y = PC2, group = Tissue, fill = Tissue), alpha = 0.2) +
         scale_color_manual(values = mycolors1) +
         labs(x = "Principal Component 1", y = "Principal Component 2") +
-        theme_minimal()
+        theme_minimal() +
+        ggplot2::theme(
+          axis.text = element_text(size = 14),  # Font size for axis tick labels
+          axis.title = element_text(size = 16), # Font size for axis titles
+          legend.text = element_text(size = 12), # Optional: Font size for legend text
+          legend.title = element_text(size = 14) # Optional: Font size for legend titles
+        )
+      
       
       print(ggplot_pca)
       
@@ -2496,7 +2507,6 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$transfer_to_heatmap, {
-
     transferred_genes <- strsplit(input$barplot_searched_gene, ",\\s*")[[1]]
     transferred_genes <- toupper(transferred_genes)
     
@@ -2537,7 +2547,6 @@ server <- function(input, output, session) {
     print("annotation colors")
     print(annotation_colors)
     
-    
     sorted_samples <- annotation %>%
       arrange(Tissue) %>%
       rownames()
@@ -2545,24 +2554,48 @@ server <- function(input, output, session) {
     rpkm_filtered <- rpkm_filtered[, sorted_samples]
     
     num_genes <- length(transferred_genes)
-    cell_height <- ifelse(num_genes > 50, 5, ifelse(num_genes > 30, 8, ifelse(num_genes > 20, 15, ifelse(num_genes > 10, 25, ifelse(num_genes > 5, 50, 100)))))
+    cell_height <- ifelse(num_genes > 50, 5,
+                          ifelse(num_genes > 30, 8,
+                                 ifelse(num_genes > 20, 15,
+                                        ifelse(num_genes > 10, 25,
+                                               ifelse(num_genes > 5, 50, 100)))))
     
     show_genes <- num_genes <= 30
     
     showModal(
       modalDialog(
-        title = "Gene Expression Heatmap for Searched Genes",
-        size = "l",  
+        title = "Gene Expression Heatmap",
+        size = "l",
         plotOutput("heatmap_in_modal", width = "95%", height = "750px"),
+        selectInput("color_scale_modal", "Select Color Scale",
+                    choices = c("Blue-White-Red" = "blue_white_red",
+                                "Green-Black-Red" = "green_black_red",
+                                "Purple-White-Green" = "purple_white_green",
+                                "Viridis" = "viridis",
+                                "Plasma" = "plasma",
+                                "Cividis" = "cividis",
+                                "Inferno" = "inferno")),
+        br(),
         downloadButton("download_modal_heatmap", "Download Heatmap"),
         easyClose = TRUE,
         footer = modalButton("Close"),
-        tags$style(".modal-dialog { width: 80%; }")
+        tags$style(".modal-dialog { width: 90%; }")
       )
     )
     
+    # Reactive expression to get the color scale based on user selection
+    color_scale_reactive <- reactive({
+      switch(input$color_scale_modal,
+             "blue_white_red" = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),
+             "green_black_red" = colorRampPalette(c("springgreen2", "black", "firebrick2"))(100),
+             "purple_white_green" = colorRampPalette(c("purple", "white", "springgreen4"))(100),
+             "viridis" = viridis(100),
+             "plasma" = plasma(100),
+             "cividis" = cividis(100),
+             "inferno" = inferno(100))
+    })
+    
     output$heatmap_in_modal <- renderPlot({
-
       pheatmap(
         rpkm_filtered,
         scale = "row",
@@ -2572,14 +2605,19 @@ server <- function(input, output, session) {
         show_colnames = TRUE,
         annotation_col = annotation,
         annotation_colors = annotation_colors,
-        color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  
+        color = color_scale_reactive(),
         legend_labels = c("low", "medium", "high"),
         fontsize_col = 11,
         fontsize_row = 12,
         angle_col = 45,
-        treeheight_row = 0,
-        treeheight_col = 0,
-        cellwidth = 23,
+        cellwidth = 23
+      )
+      
+      grid::grid.text(
+        label = "Z-Score",  
+        x = .74,           
+        y = 0.78,            
+        gp = grid::gpar(fontsize = 10, fontface = "bold")  
       )
     })
     
@@ -2599,7 +2637,7 @@ server <- function(input, output, session) {
           show_colnames = TRUE,
           annotation_col = annotation,
           annotation_colors = annotation_colors,
-          color = colorRampPalette(c("royalblue", "white", "firebrick3"))(100),  
+          color = color_scale_reactive(),
           legend_labels = c("low", "medium", "high"),
           fontsize = 10,
           angle_col = 45,
@@ -2612,6 +2650,7 @@ server <- function(input, output, session) {
       }
     )
   })
+  
   
   ##########################
   
@@ -3084,7 +3123,7 @@ server <- function(input, output, session) {
         showNotification("VCF file found.", type = "message")
 
         tryCatch({
-          vcf_data <- VariantAnnotation::readVcf(vcf_file, "galGal6")
+          vcf_data <- VariantAnnotation::readVcf(vcf_file, input$genome_select)
 
           snp_data <- rowRanges(vcf_data)
           fixed_fields <- as.data.frame(fixed(vcf_data))
@@ -3507,27 +3546,32 @@ server <- function(input, output, session) {
     top_tissues <- sort(tissue_frequency, decreasing = TRUE)
     top_tissues_df <- data.frame(Tissue = names(top_tissues), Frequency = as.vector(top_tissues))
     
-    par(mar = c(10, 4, 4, 2)) 
+    # Use only the first three words for each tissue label
+    top_tissues_df$Tissue <- sapply(top_tissues_df$Tissue, function(label) {
+      paste(strsplit(label, "\\s+")[[1]][1:min(4, length(strsplit(label, "\\s+")[[1]]))], collapse = " ")
+    })
+    
+    par(mar = c(10, 4, 4, 2))
     
     bar_pos <- barplot(
       top_tissues_df$Frequency[1:10],
-      names.arg = NA,  
+      names.arg = NA,
       col = "darkorange",
       main = "Top 10 Frequent Tissues",
       ylab = "Frequency",
-      las = 1,  
-      cex.names = 0.8  
+      las = 1,
+      cex.names = 0.8
     )
     
-  
-    text(x = bar_pos, 
-         y = par("usr")[3] - 0.1 * max(top_tissues_df$Frequency),  
-         labels = top_tissues_df$Tissue[1:10], 
-         srt = 45, 
-         adj = 1, 
-         xpd = TRUE,  
-         cex = 0.6)  
+    text(x = bar_pos,
+         y = par("usr")[3] - 0.1 * max(top_tissues_df$Frequency),
+         labels = top_tissues_df$Tissue[1:10],
+         srt = 45,
+         adj = 1,
+         xpd = TRUE,
+         cex = 1)
   })
+  
   
   observeEvent(input$add_genes_button, {
     new_genes <- unlist(strsplit(input$add_genes_input, ",\\s*"))
