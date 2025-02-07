@@ -1,4 +1,8 @@
 
+# Creates Table of Statistics
+# Author: Oliver Brown
+# Email: ombrown@uw.edu
+
 library(dplyr)
 library(rtracklayer)
 library(VariantAnnotation)
