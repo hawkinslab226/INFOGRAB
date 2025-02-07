@@ -1,0 +1,50 @@
+Package: InfoGrab
+Type: Package
+Title: InfoGrab Shiny Application
+Version: 1.0.0
+Author: Oliver Brown
+Maintainer: Oliver Brown <ombrown@uw.edu>
+Description: INteractive Functional Ontology Genomic Regulatory Element Analysis and Browsing.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Imports:
+    shiny (>= 1.8.1.1),
+    shinythemes,
+    ggplot2,
+    pheatmap,
+    dplyr,
+    readr,
+    readxl,
+    DT,
+    purrr,
+    tibble,
+    reshape2,
+    RColorBrewer,
+    gplots,
+    scales,
+    data.table,
+    gridExtra,
+    plotly,
+    lubridate,
+    shinyjs,
+    shinydashboard,
+    shinycssloaders,
+    shinycustomloader,
+    shinyWidgets,
+    htmltools,
+    tools,
+    htmlwidgets,
+    DESeq2,
+    ggplotify,
+    igraph,
+    GGally,
+    tispec,
+    knitr,
+    devtools,
+    stringr,
+    igvShiny,
+    BiocManager,
+    VariantAnnotation,
+    Rsamtools
+  

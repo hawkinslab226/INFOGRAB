@@ -1,0 +1,6 @@
+# Ignore common directories with many files that renv should skip
+anaconda3/
+Library/Application Support/
+Library/Caches/
+Downloads/
+bin/
