@@ -5,7 +5,7 @@
 # Email: ombrown@uw.edu
 ###
 
-setwd("~/Documents/Internship/InfoGrab")
+#setwd("~/Documents/Internship/InfoGrab")
 
 required_packages <- c(
   "shiny", "shinyBS", "shinythemes", "shinycustomloader", "shinycssloaders", 
@@ -30,9 +30,9 @@ lapply(required_packages, install_if_missing)
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager")
   BiocManager::install(c("Rhtslib", "genefilter", "rtracklayer", "DESeq2", 
-                       "VariantAnnotation", "Rsamtools", 
-                       "GenomicAlignments", "BSgenome", 
-                       "preprocessCore", "GenomicFeatures", "edgeR"), force = T)
+                         "VariantAnnotation", "Rsamtools", 
+                         "GenomicAlignments", "BSgenome", 
+                         "preprocessCore", "GenomicFeatures", "edgeR"), force = T)
 }
 
 if (!require(DESeq2)) {
@@ -49,9 +49,9 @@ if (!require(rtracklayer)) {
 }
 
 if (!require(tispec)) {
- library(devtools)
- library(remotes)
- remotes::install_github('roonysgalbi/tispec')
+  library(devtools)
+  library(remotes)
+  remotes::install_github('roonysgalbi/tispec')
 }
 
 if (!require(igvShiny)) {
@@ -106,24 +106,51 @@ library(ggdist)
 library(ggiraph)
 
 
+# load required package
+library(stringr)
+
+# 1) Load data (if not already in memory)
 if (!exists("comparison_results")) {
   comparison_results <- readRDS("data/comparison_results.rds")
 }
-
 if (!exists("RPKM_data")) {
   RPKM_data <- read.delim("data/logRPKM0625_filter.txt")
 }
-
 if (!exists("phenodata")) {
   phenodata <- read.csv("data/Pheno_data071523.csv")
 }
-
-phenodata$Tissue
-
 if (!exists("cnt_data")) {
   cnt_data <- read.delim("data/all_cnt_0625.txt")
 }
 
+# 2) Fix sample names for macrophages
+phenodata$Sample_name2 <- ifelse(
+  grepl("macrophage", phenodata$Tissue, ignore.case = TRUE) &
+    !grepl("^macrophage_", phenodata$Sample_name2, ignore.case = TRUE),
+  paste0("macrophage_", phenodata$Sample_name2),
+  phenodata$Sample_name2
+)
+
+orig_names <- phenodata$Sample_name
+new_names  <- orig_names
+mask <- grepl("macrophage", phenodata$Tissue, ignore.case = TRUE) &
+  !grepl("^Sample_macrophage_", new_names, ignore.case = TRUE)
+if (any(mask)) {
+  new_names[mask] <- sub("^(?i)Sample[_ ]+", "Sample_macrophage_", new_names[mask], perl = TRUE)
+}
+phenodata$Sample_name <- new_names
+name_mapping <- setNames(new_names, orig_names)
+
+update_sample_names <- function(data_obj) {
+  cols <- colnames(data_obj)
+  colnames(data_obj) <- sapply(cols, function(x) if (x %in% names(name_mapping)) name_mapping[[x]] else x)
+  data_obj
+}
+
+RPKM_data <- update_sample_names(RPKM_data)
+cnt_data  <- update_sample_names(cnt_data)
+
+# 3) Define your color palettes
 mycolors1 <- c(
   `Kidney`="#43009A",
   `Trachea`="#990099",
@@ -146,14 +173,35 @@ mycolors1 <- c(
   `Shell Gland`="#FFC78E",
   `Ovary`="#CCCC00"
 )
-
 mycolors2 <- c(
-  `Immune System (Tissues and Cells)` = "#31E1F7", 
-  `Respiratory System` = "#400D51", 
-  `Excretory System` ="#FF7777",
-  `Muscular System (Chicken Meat)` = "#D800A6",
-  `Intestinal System` ="#6499E9", 
-  `Reproductive Female Duct System` = "#836FFF")
+  `Immune System (Tissues and Cells)` = "#31E1F7",
+  `Respiratory System`               = "#400D51",
+  `Excretory System`                 = "#FF7777",
+  `Muscular System (Chicken Meat)`   = "#D800A6",
+  `Intestinal System`                = "#6499E9",
+  `Reproductive Female Duct System`  = "#836FFF"
+)
+
+# 4) Define the typo‐corrections
+repl <- c(
+  "Iliotibialis Lateralis \\(M\\.Tight\\)" = "Iliotibialis Lateralis (Thigh)",
+  "Pectoralis Major \\(M\\.Breast\\)"      = "Pectoralis Major (Breast)"
+)
+
+# 5) Apply corrections everywhere
+phenodata$Tissue    <- str_replace_all(phenodata$Tissue,    repl)
+names(mycolors1)    <- str_replace_all(names(mycolors1),    repl)
+names(mycolors2)    <- str_replace_all(names(mycolors2),    repl)
+names(comparison_results) <- str_replace_all(names(comparison_results), repl)
+
+# 6) Recompute any derived tissue lists
+tissue_names     <- unique(phenodata$Tissue)
+systems          <- unique(phenodata$System)
+tissue_by_system <- setNames(
+  lapply(systems, function(s) unique(phenodata$Tissue[phenodata$System == s])),
+  systems
+)
+
 
 ############################################################
 
@@ -317,6 +365,29 @@ ui <- navbarPage(
         width: 100%;
         margin-bottom: 10px;
       }
+      @keyframes blink {
+      0% { background-color: yellow; }
+      50% { background-color: orange; }
+      100% { background-color: yellow; }
+      }
+      .blink {
+        animation: blink 1s infinite;
+      }
+    .navbar {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 1000;
+    }
+    /* Add top padding to the body so content isn't hidden behind the navbar */
+    body {
+      padding-top: 70px;  /* Adjust this value based on your navbar's height */
+    }
+    
+    /* Wrap plot outputs with extra space at bottom */
+    .plot-container {
+      padding-bottom: 350px;  /* Adjust this value as needed */
+    }
     "))
   ),
   tabPanel("INFO GRAB", value = "de_tab",
@@ -333,6 +404,8 @@ ui <- navbarPage(
              uiOutput("tissue_display")
            )
   ),
+  
+  # Add labels
   
   tabPanel("Differential Analysis", value = "de_tab",
            tabsetPanel(
@@ -393,6 +466,11 @@ ui <- navbarPage(
                             selectInput("correlation_system", "Select System:", choices = systems)
                           ),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+                          conditionalPanel(
+                            condition = "input.correlation_mode == 'system'",
+                            actionButton("confirm_cor_plot", "Confirm Plot")
+                          ),
+                          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           downloadButton("download_correlation_plot", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("This section allows you to visualize the correlation between the expression 
@@ -404,7 +482,9 @@ ui <- navbarPage(
                         ),
                         mainPanel(
                           uiOutput("title_cor_plot"),
-                          withLoader(plotOutput("correlation_plot", width = "90%", height = "750px"), type = "html", loader = "dnaspin")
+                          div(class = "plot-container",
+                              withLoader(plotOutput("correlation_plot", width = "90%", height = "750px"), type = "html", loader = "dnaspin")
+                          )
                         )
                       )
              ),
@@ -413,15 +493,15 @@ ui <- navbarPage(
              tabPanel("Volcano Plot",
                       sidebarLayout(
                         sidebarPanel(
-                          textInput("searched_gene_volcano", "Label plot: (comma-separated)", width = '600px', value = "", placeholder = "Search for genes here"),
+                          textInput("searched_gene_volcano", "Label plot: (comma-separated) e.g. EGR1, CTCF", width = '600px', value = "", placeholder = "Search for genes here"),
                           actionButton("search_gene_volcano", "Search"),
                           actionButton("clear_search_gene_volcano", "Clear"),
-
+                          
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           
-                            radioButtons("labeling_metric", "Label genes by:",
-                                         choices = list("Smallest FDR" = "fdr", "Largest Absolute Fold Change" = "fc"),
-                                         selected = "fdr"),
+                          radioButtons("labeling_metric", "Label genes by:",
+                                       choices = list("Smallest FDR" = "fdr", "Largest Absolute Fold Change" = "fc"),
+                                       selected = "fdr"),
                           
                           
                           radioButtons("labeling_option", "Labeling Options:",
@@ -438,7 +518,7 @@ ui <- navbarPage(
                             sliderInput("n_labels_left", "Number of Labels (Left)", min = 0, max = 50, value = 5),
                             sliderInput("n_labels_right", "Number of Labels (Right)", min = 0, max = 50, value = 5)
                           ),
-
+                          
                           actionButton("add_labeled_genes", "Grab Labeled Genes"),
                           
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
@@ -454,8 +534,10 @@ ui <- navbarPage(
                         ),
                         mainPanel(
                           uiOutput("title_volcano_plot"),
-                          withLoader(plotOutput("volcano_plot", width = "90%", height = "750px"), 
-                                     type = "html", loader = "dnaspin")
+                          div(class = "plot-container",
+                              withLoader(plotOutput("volcano_plot", width = "90%", height = "750px"), 
+                                         type = "html", loader = "dnaspin")
+                          )
                         )
                       )
              ),
@@ -487,7 +569,12 @@ ui <- navbarPage(
                           downloadButton("download_heatmap_plot", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("Each cell represents the expression level of a gene in a sample, with colors indicating the level of expression."),
-                          tags$p("The color scale is based on z-scores, which represent the number of standard deviations away from the mean expression level. High positive z-scores indicate higher expression levels, while high negative z-scores indicate lower expression levels.")
+                          tags$p(
+                            "The color scale is based on ", tags$b("z-scores"),
+                            ", which represent the number of standard deviations away from the mean expression level. High positive ", tags$b("z-scores"),
+                            " indicate higher expression levels, while high negative ", tags$b("z-scores"),
+                            " indicate lower expression levels."
+                          )
                         ),
                         mainPanel(
                           uiOutput("title_heatmap"),
@@ -495,7 +582,7 @@ ui <- navbarPage(
                                                 brush = brushOpts(id = "heatmap_brush", resetOnNew = TRUE)),
                                      type = "html", loader = "dnaspin"),
                           tags$hr(),
-                          tags$p(tags$b("Brushing: Drag to select genes for further analysis."))
+                          tags$p(tags$b("Brushing: hover your mouse over the plot, click, then drag to select genes."))
                         )
                       )
              ),
@@ -521,7 +608,9 @@ ui <- navbarPage(
                         ),
                         mainPanel(
                           uiOutput("title_pca_plot"),
-                          withLoader(plotOutput("pca_plot", height = "600px"), type = "html", loader = "dnaspin")
+                          div(class = "plot-container",
+                              withLoader(plotOutput("pca_plot", height = "600px"), type = "html", loader = "dnaspin")
+                          )
                         )
                       )
              ),
@@ -571,7 +660,7 @@ ui <- navbarPage(
   ),
   
   tabPanel("Tissue-Specific Analysis", value = "tissue_tab",
-
+           
            tabsetPanel(
              tabPanel("Heatmap",
                       sidebarLayout(
@@ -599,7 +688,7 @@ ui <- navbarPage(
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           downloadButton("download_tissue_specific_heatmap", "Download PNG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          tags$p("This section displays a tissue-specific heatmap, which focuses on the expression of genes that are most variable across the selected tissues."),
+                          tags$p("This section displays a tissue-specific heatmap, which focuses on the expression of genes that are most tissue specific across the selected tissues."),
                           tags$p("The heatmap is color-coded to represent different levels of gene expression, allowing you to easily identify patterns and differences in gene expression between tissues. This is particularly useful for identifying tissue-specific genes and understanding how gene expression varies across different biological systems.")
                         ),
                         mainPanel(
@@ -617,41 +706,121 @@ ui <- navbarPage(
   ),
   
   shiny::tabPanel(
-    "Allele Expression", value = "ase_tab",
+    title = "Allelic Expression",
+    value = "ase_tab",
     shiny::sidebarLayout(
+      
+      # ─ Sidebar with controls ────────────────────────────────────────────────────
       shiny::sidebarPanel(
-        shiny::numericInput(
-          "top_n_raincloud",
-          "Number of Top Genes (Raincloud):",
-          value = 10,
-          min = 1,
-          max = 10000,
-          step = 1
+        # Data type selector
+        shiny::radioButtons(
+          inputId  = "raincloud_data_type",
+          label    = "Data Type:",
+          choices  = c("SNP ASE" = "snp", "Gene ASE" = "gene"),
+          selected = "snp"
         ),
-        shiny::sliderInput("pval_cutoff", "P-value Cutoff (FDR):", min = 0, max = 0.05, value = 0.05, step = 0.005),
-        shiny::selectInput("tissue_select_raincloud", "Select Tissues:", choices = NULL, selected = NULL, multiple = TRUE),
+        
+        # How many top features?
+        shiny::numericInput(
+          inputId = "top_n_raincloud",
+          label   = "Number of Top Features (Raincloud):",
+          value   = 10, min = 1, max = 10000, step = 1
+        ),
+        
+        # FDR cutoff
+        shiny::sliderInput(
+          inputId = "pval_cutoff",
+          label   = "P-value Cutoff (FDR):",
+          min     = 0, max = 0.05,
+          value   = 0.05, step = 0.005
+        ),
+        
+        # Tissue selection
+        shiny::selectInput(
+          inputId  = "tissue_select_raincloud",
+          label    = "Select Tissues:",
+          choices  = NULL,
+          selected = NULL,
+          multiple = TRUE
+        ),
+        
+        # Search box only when "All Tissues" **and** gene mode
         shiny::conditionalPanel(
-          condition = "input.tissue_select_raincloud.includes('All Tissues')",
-          shiny::selectizeInput(
-            "gene_search_select",
-            "Search for Genes:",
-            choices = NULL,
-            selected = NULL,
-            multiple = TRUE,
-            options = list(placeholder = "Type to search genes...")
+          condition = "input.raincloud_data_type=='gene' && input.tissue_select_raincloud.includes('All Tissues')",
+          shiny::textInput(
+            inputId = "raincloud_searched_gene",
+            label   = "Search for Genes (comma-separated):",
+            value   = ""
           )
         ),
-        shiny::actionButton("random_genes", "10 Random Genes"),
-        shiny::actionButton("reset_top_genes", "Reset to Top Genes"), 
-        shiny::checkboxInput("show_points", "Show Individual Points", TRUE),
-        shiny::checkboxInput("show_mean_line", "Show Mean Line", TRUE),
+        
+        # Search box only when "All Tissues" **and** SNP mode
+        shiny::conditionalPanel(
+          condition = "input.raincloud_data_type=='snp' && input.tissue_select_raincloud.includes('All Tissues')",
+          shiny::textInput(
+            inputId = "raincloud_searched_snp",
+            label   = "Search for SNP IDs (comma-separated):",
+            value   = ""
+          )
+        ),
+        
+        # Random / clear buttons
+        shiny::actionButton("random_genes_raincloud", "10 Random Genes"),
+        shiny::actionButton("random_snps_raincloud",  "10 Random SNPs"),
+        shiny::actionButton("clear_search_raincloud", "Clear Search"),
+        
+        # Plot toggles
+        shiny::checkboxInput("show_points",    "Show Individual Points", TRUE),
+        shiny::checkboxInput("show_mean_line", "Show Mean Line",        TRUE),
+        
+        # Download + grab buttons
         shiny::downloadButton("download_raincloud_plot", "Download PNG"),
-        shiny::actionButton("add_displayed_genes_ase", "Add Displayed Genes"),
-        shiny::actionButton("grab_all_ase_genes", "Grab All ASE Genes")
+        
+        shiny::conditionalPanel(
+          condition = "input.raincloud_data_type=='gene'",
+          shiny::actionButton("grab_selected_raincloud", "Grab Selected"),
+          shiny::actionButton("grab_displayed_raincloud", "Grab All Displayed")
+        ),
+        
+        # Info panel
+        ## in your UI, sidebarPanel, instead of the single info div:
+        
+        # Gene info (only when “Gene ASE” is selected)
+        shiny::conditionalPanel(
+          condition = "input.raincloud_data_type == 'gene'",
+          tags$div(
+            style = "margin:15px 0; padding:10px; background:#f9f9f9; border:1px solid #ddd;",
+            tags$strong("Mean effect:"), "the average of sample allelic imbalance estimates, 
+            reflecting the overall magnitude of allele-specific expression in a gene."
+          )
+        ),
+        
+        # SNP info (exactly your original AE text)
+        shiny::conditionalPanel(
+          condition = "input.raincloud_data_type == 'snp'",
+          tags$div(
+            style = "margin:15px 0; padding:10px; background:#f9f9f9; border:1px solid #ddd;",
+            tags$strong("Allelic Expression (AE):"), 
+            "measures how far the reference-allele fraction (Rratio) is from 0.5:",
+            tags$br(),
+            HTML("&nbsp;&nbsp;<em>AE</em> = |0.5 – R<sub>ratio</sub>|, where R<sub>ratio</sub> = Ref reads / Total reads"),
+            tags$br(), tags$br(),
+            "Values of AE near 0 indicate nearly equal expression from both alleles.  ",
+            "Values of AE approaching 0.5 indicate strong bias toward one allele.",
+            tags$br(), tags$strong("Common threshold:"), 
+            "AE ≥ 0.3 is often used to call a gene “allele-specific,” but you may tighten or loosen this cut-off."
+          )
+        )
       ),
+      
+      # ─ Main panel with the raincloud plot ───────────────────────────────────────
       shiny::mainPanel(
-        shiny::h3("Raincloud Plot by Gene"),
-        withLoader(ggiraph::girafeOutput("raincloud_plot", width = "100%", height = "1200px"), type = "html", loader = "dnaspin")
+        shiny::h3(shiny::textOutput("raincloud_title")),
+        withLoader(
+          ggiraph::girafeOutput("raincloud_plot", width = "100%", height = "800px"),
+          type   = "html",
+          loader = "dnaspin"
+        )
       )
     )
   ),
@@ -682,7 +851,6 @@ ui <- navbarPage(
         )
       ),
       
-      ## ROW 1: Search region + track input type
       fluidRow(
         column(
           width = 4,
@@ -778,6 +946,7 @@ ui <- navbarPage(
                            selected = "combined"),
                downloadButton("download_results", "Download Selected CSV"),
                
+               actionButton("delete_selected_genes", "Delete Selected Genes"),
                actionButton("clear_cart", "Clear Genes"),
                tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                textInput("add_genes_input", "Add Genes (comma separated):", value = "", placeholder = "Search for genes here"),
@@ -874,7 +1043,7 @@ ui <- navbarPage(
                      tags$li(tags$b("Select Mode:"), 
                              " Either compare specific tissues or group multiple tissues by their biological system."),
                      tags$li(tags$b("Use Filtered Data:"), 
-                             " Optionally apply FDR and FC thresholds; otherwise, the top 1,000 most variable genes are used."),
+                             " Optionally apply FDR and FC thresholds; otherwise, the top 1,000 most tissue specific genes are used."),
                      tags$li(tags$b("System Selection:"), 
                              " Narrow down to tissues within a single system, e.g., immune or respiratory."),
                      tags$li(tags$b("Legend:"), 
@@ -932,8 +1101,16 @@ ui <- navbarPage(
                              " Customize the gradient palette to best represent expression levels.")
                    ),
                    
-                   h3("Interactive Features and Download"),
-                   p("Brushing allows the selection of gene subsets. The entire heatmap can be downloaded in PNG format.")
+                   h3("How to Use Brushing"),
+                   helpText(
+                     "“Brushing” is how you interactively draw a box around points (in the volcano or correlation plots) or rows (in the heatmaps) to select them:",
+                     tags$ol(
+                       tags$li("Click and hold your left mouse button anywhere in the plot or heatmap."),
+                       tags$li("Drag diagonally to form a rectangle over the points or rows you’re interested in."),
+                       tags$li("Release the mouse button: anything inside that rectangle becomes your “selection.”"),
+                       tags$li("A pop‑up modal will appear showing the genes you brushed. From there you can “Grab Genes” to add them to your cart.")
+                     ),
+                   )
                  )
         ),
         
@@ -950,8 +1127,8 @@ ui <- navbarPage(
                              " Restrict PCA to particular tissues, a biological system, or include every tissue."),
                      tags$li(tags$b("System Selection:"), 
                              " When a single system is chosen, focus solely on that system’s tissues."),
-                     tags$li(tags$b("Top Variable Genes:"), 
-                             " Up to 1,000 of the most variable genes are used for clarity."),
+                     tags$li(tags$b("Top Tissue Specific Genes:"), 
+                             " Up to 1,000 of the most tissue specific genes are used for clarity."),
                      tags$li(tags$b("Download Plot:"), 
                              " Save the PCA visualization as a PNG file.")
                    ),
@@ -998,12 +1175,20 @@ ui <- navbarPage(
                              " Target the system(s) or tissues you wish to explore."),
                      tags$li(tags$b("Tau Threshold:"), 
                              " Set at 0.85 by default to capture strongly tissue-specific genes."),
-                     tags$li(tags$b("Top Variable Genes:"), 
+                     tags$li(tags$b("Top Tissue Specific Genes:"), 
                              " Narrow the heatmap to genes with the greatest variance.")
                    ),
                    
-                   h3("Interactive Heatmap"),
-                   p("Genes are displayed in a clustered heatmap for intuitive pattern recognition. Brushing them lets you ‘grab’ or export those genes for deeper analysis.")
+                   h3("How to Use Brushing"),
+                   helpText(
+                     "“Brushing” is how you interactively draw a box around points (in the volcano or correlation plots) or rows (in the heatmaps) to select them:",
+                     tags$ol(
+                       tags$li("Click and hold your left mouse button anywhere in the plot or heatmap."),
+                       tags$li("Drag diagonally to form a rectangle over the points or rows you’re interested in."),
+                       tags$li("Release the mouse button: anything inside that rectangle becomes your “selection.”"),
+                       tags$li("A pop‑up modal will appear showing the genes you brushed. From there you can “Grab Genes” to add them to your cart.")
+                     ),
+                   )
                  )
         ),
         
@@ -1202,35 +1387,46 @@ server <- function(input, output, session) {
   
   output$tissue_display <- renderUI({
     tagList(
-      div(style = "display: flex; align-items: center; margin-bottom: 30px;",
-          img(src = "systems_logo.png", style = "width: 100px; height: auto; margin-right: 20px;"),
-          h1("Chicken Systems", style = "margin: 0; font-size: 2.5em;") # Larger title
+      # Instruction header with added help information.
+      div(style = "text-align: center; margin-bottom: 30px;",
+          h1("Welcome to INFO GRAB", style = "font-size: 3em; margin-bottom: 10px;"),
+          p("Click on any tissue below to view detailed sample and gene information.", 
+            style = "font-size: 1.2em; color: #555;"),
+          p("Please visit the Help page/tab to get an overview and explanation of the functions offered.", 
+            style = "font-size: 1.1em; color: #555;")
       ),
-      tags$div(style = "margin-bottom: 20px;"), # Space below the title
+      # Loop over each system and its tissues.
       lapply(names(tissue_by_system), function(system) {
-        list(
-          h3(paste(system)),
-          div(style = "display: flex; flex-wrap: wrap; gap: 15px; align-items: center;",
+        tagList(
+          h2(system, style = "text-align: center; margin-bottom: 20px;"),
+          div(style = "display: flex; flex-wrap: wrap; justify-content: center; gap: 20px;",
               lapply(tissue_by_system[[system]], function(tissue) {
-                div(style = "width: calc(33.33% - 10px); display: flex; align-items: center;",
+                local_tissue <- tissue  # capture the tissue name locally
+                div(class = "tissue-card", 
+                    style = "border: 1px solid #ccc; border-radius: 5px; padding: 10px; width: 200px; text-align: center;",
                     {
-                      img_path <- paste0(gsub(" ", "_", tissue), ".png")
-                      img_src <- file.path("www", img_path)
-                      if (file.exists(img_src)) {
-                        img(src = img_path, style = "width: 80px; height: auto; margin-right: 13px;")
+                      img_path <- paste0(gsub(" ", "_", local_tissue), ".png")
+                      if (file.exists(file.path("www", img_path))) {
+                        tags$img(src = img_path, 
+                                 style = "width: 100px; height: auto; margin-bottom: 10px;")
+                      } else {
+                        tags$div("No image", style = "height: 100px; margin-bottom: 10px; color: #aaa;")
                       }
                     },
-                    actionLink(inputId = paste0("tissue_", gsub(" ", "_", tissue)),
-                               label = tissue,
-                               style = "font-size: 18px; text-align: left;")
+                    actionLink(inputId = paste0("tissue_", gsub(" ", "_", local_tissue)),
+                               label = local_tissue,
+                               style = "font-size: 1.2em; font-weight: bold; color: #337ab7; text-decoration: none;"),
+                    p("Click to view details", style = "font-size: 0.9em; color: #666;")
                 )
               })
           ),
-          tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;")
+          tags$hr(style = "margin-top:30px; margin-bottom:30px;")
         )
       })
     )
   })
+  
+  
   
   observe({
     lapply(names(tissue_by_system), function(system) {
@@ -1242,33 +1438,35 @@ server <- function(input, output, session) {
             filter(Tissue == tissue) %>%
             pull(Expressed_Genes)
           
-          tissue_data <- RPKM_data %>%
-            dplyr::select(all_of(samples))
+          tissue_data <- RPKM_data %>% dplyr::select(all_of(samples))
           
-          gene_expression_sums <- tissue_data %>%
-            rowSums(na.rm = TRUE) %>%
-            as.data.frame() %>%
-            setNames("Expression_Sum") %>%
-            rownames_to_column(var = "Gene") %>%
+          # Top 5 Most Expressed Genes (RPKM)
+          gene_expression_sums <- tissue_data %>% 
+            rowSums(na.rm = TRUE) %>% 
+            as.data.frame() %>% 
+            setNames("Expression_Sum") %>% 
+            rownames_to_column(var = "Gene") %>% 
             arrange(desc(Expression_Sum))
-          
           top_rpkm_genes <- gene_expression_sums %>% head(5)
           top_rpkm_list <- paste(top_rpkm_genes$Gene, collapse = "<br>")
           
+          # Top 5 ASE Genes (by Score)
           ase_data <- gene_ase_df()
-          
           print(ase_data)
-          
-          top_ase_genes <- ase_data %>%
-            filter(Tissue == tissue) %>%
-            arrange(desc(score)) %>%
+          top_ase_genes <- ase_data %>% 
+            filter(Tissue == tissue) %>% 
+            arrange(desc(mean.s)) %>%  # Using mean.s as score
             head(5)
-          
           if (nrow(top_ase_genes) > 0) {
             top_ase_list <- paste(top_ase_genes$Gene, collapse = "<br>")
           } else {
             top_ase_list <- "No ASE genes found for this tissue"
           }
+          
+          # Top 5 Tissue-Specific (TS) Genes using tau score
+          ts_data <- calcTau_custom(tissue_data)
+          top_ts_genes <- ts_data %>% arrange(desc(tau)) %>% head(5)
+          top_ts_list <- paste(top_ts_genes$gene, collapse = "<br>")
           
           showModal(modalDialog(
             title = paste(tissue),
@@ -1277,7 +1475,8 @@ server <- function(input, output, session) {
                 "Names: ", paste(samples_display, collapse = ", "), "<br><hr>",
                 "Total Expressed Genes: ", expressed_genes_count, "<br><hr>",
                 "<b>Top 5 Most Expressed Genes (RPKM):</b><br>", top_rpkm_list, "<br><hr>",
-                "<b>Top 5 ASE Genes (by Score):</b><br>", top_ase_list
+                "<b>Top 5 Tissue-Specific Genes (TS):</b><br>", top_ts_list, "<br><hr>",
+                "<b>Top 5 ASE Genes (by Score):</b><br>", top_ase_list, "<br><hr>"
               )
             ),
             easyClose = TRUE,
@@ -1287,6 +1486,7 @@ server <- function(input, output, session) {
       })
     })
   })
+  
   
   observe({
     selected_tissue1 <- input$tissue_select1
@@ -1639,15 +1839,24 @@ server <- function(input, output, session) {
   })
   
   output$download_DEA_data <- downloadHandler(
-    
-    filename = function(){"DEA_data.csv"}, 
-    content = function(fname){
+    filename = function() { 
+      "DEA_data.csv" 
+    },
+    content = function(fname) {
       data <- filtered_data_combined()
-      data <- data %>%
-        dplyr::select(-Gene)
-      write.csv(data, fname)
+      if ("log2FoldChange" %in% names(data)) {
+        if (order_val() == 0) {
+          names(data)[names(data) == "log2FoldChange"] <- 
+            paste0("log2FC (", input$tissue_select1, " up / ", input$tissue_select2, " down)")
+        } else {
+          names(data)[names(data) == "log2FoldChange"] <- 
+            paste0("log2FC (", input$tissue_select2, " up / ", input$tissue_select1, " down)")
+        }
+      }
+      write.csv(data, fname, row.names = FALSE)
     }
   )
+  
   
   observeEvent(input$add_all_de_cart, {
     data <- filtered_data_combined()
@@ -1749,7 +1958,7 @@ server <- function(input, output, session) {
   })
   
   # Popup menu
-
+  
   observe({
     shinyjs::useShinyjs()  # Enable shinyjs
   })
@@ -1761,7 +1970,7 @@ server <- function(input, output, session) {
       shinyjs::runjs('$("#tissue-selection-menu").css("height", "75px");')
       tissue_menu_visible(FALSE) 
     } else {
-
+      
       shinyjs::runjs('$("#tissue-selection-menu").css("height", "400px");')  
       tissue_menu_visible(TRUE)  
     }
@@ -2037,7 +2246,7 @@ server <- function(input, output, session) {
   })
   
   
-
+  
   observeEvent(input$add_de_genes_tissue2, {
     data <- unfiltered_data()
     
@@ -2270,12 +2479,12 @@ server <- function(input, output, session) {
     )
     
     # Add legend title
-    grid::grid.text(
-      label = "Z-Score",
-      x = .94,          
-      y = 0.786,            # Adjust position (vertical)
-      gp = grid::gpar(fontsize = 12, fontface = "bold")  # Adjust font size and style
-    )
+    #grid::grid.text(
+    #label = "Z-Score",
+    #x = .94,          
+    #y = 0.786,       
+    #gp = grid::gpar(fontsize = 12, fontface = "bold")
+    #)
     
     ordered_genes(heatmap$tree_row$labels[heatmap$tree_row$order])
     
@@ -2292,34 +2501,70 @@ server <- function(input, output, session) {
     generate_plot(data, search_genes)
   })
   
+  # Declare a dedicated reactive value for the differential heatmap selection
+  diff_selected_genes <- reactiveVal(NULL)
+  
   observeEvent(input$heatmap_brush, {
     brush_data <- input$heatmap_brush
-    
     if (!is.null(brush_data)) {
-      heatmap_rows <- ordered_genes()
+      heatmap_rows <- isolate(ordered_genes())
       total_height <- length(heatmap_rows)
       
-      start_row_index <- total_height - ceiling(brush_data$ymin / (1 / total_height)) + 1
-      end_row_index <- total_height - ceiling(brush_data$ymax / (1 / total_height)) + 1
+      # Define a vertical offset to correct for the misalignment.
+      # Adjust this value as needed (e.g., 0.1 for 10% of the plot height).
+      y_offset <- 0.1
       
-      start_row_index <- max(min(start_row_index, total_height), 1)
-      end_row_index <- max(min(end_row_index, total_height), 1)
+      # Adjust the brush y-values by the offset.
+      adj_ymin <- brush_data$ymin - y_offset
+      adj_ymax <- brush_data$ymax - y_offset
       
-      selected_rows <- heatmap_rows[end_row_index:start_row_index]
+      # Ensure the adjusted values remain within [0,1].
+      adj_ymin <- max(min(adj_ymin, 1), 0)
+      adj_ymax <- max(min(adj_ymax, 1), 0)
       
-      selected_genes(selected_rows)
-
+      # Convert the adjusted normalized y-values to row indices.
+      start_idx <- ceiling((1 - adj_ymax) * total_height)
+      end_idx   <- floor((1 - adj_ymin) * total_height)
+      
+      # Bound the indices within the valid range.
+      start_idx <- max(min(start_idx, total_height), 1)
+      end_idx   <- max(min(end_idx, total_height), 1)
+      
+      # Swap indices if needed.
+      if (start_idx > end_idx) {
+        tmp <- start_idx
+        start_idx <- end_idx
+        end_idx <- tmp
+      }
+      
+      sel_genes <- heatmap_rows[start_idx:end_idx]
+      diff_selected_genes(sel_genes)
+      
       showModal(modalDialog(
         title = "Selected Genes",
-        paste(paste(selected_rows, collapse = ", ")),
+        HTML(paste(sel_genes, collapse = ", ")),
         footer = tagList(
-          actionButton("add_to_cart_tissue_specific_modal", "Grab Genes"),
+          actionButton("add_to_cart_diff_modal", "Grab Genes"),
           modalButton("Close")
         ),
         easyClose = TRUE
       ))
     }
   })
+  
+  
+  observeEvent(input$add_to_cart_diff_modal, {
+    # Use isolate() to lock in the current selection
+    genes_to_add <- isolate(diff_selected_genes())
+    if (!is.null(genes_to_add) && length(genes_to_add) > 0) {
+      request_add_genes(genes_to_add)  # Your function to add genes to the cart
+      showNotification("Genes grabbed.", type = "message")
+    } else {
+      showNotification("No genes selected.", type = "warning")
+    }
+  })
+  
+  
   
   output$download_heatmap_plot <- downloadHandler(
     filename = function() {paste('heatmap.png')},
@@ -2387,7 +2632,7 @@ server <- function(input, output, session) {
       req(filtered_data_combined())
       filtered_genes <- filtered_data_combined()$Gene
       if (length(filtered_genes) == 0) {
-        showNotification("No genes available after filtering. Using top variable genes instead.", type = "warning")
+        showNotification("No genes available after filtering. Using top tissue specific genes instead.", type = "warning")
         N <- 1000
         gene_variability <- apply(RPKM_data, 1, var)
         top_genes <- names(sort(gene_variability, decreasing = TRUE)[1:N])
@@ -2407,14 +2652,23 @@ server <- function(input, output, session) {
     colnames(selected_data) <- selected_samples
     
     create_diag <- function(data, mapping, ...) {
-      varname <- as_label(mapping$x)
-      tissue <- phenodata$Tissue[match(varname, phenodata$Sample_name2)]
-      color <- mycolors1[tissue]
-      ggplot(data = data, mapping = mapping) +
-        geom_density() +
-        theme_void() +
-        ggplot2::theme(panel.background = element_rect(fill = color, colour = "black", size = 2))
+      varname    <- rlang::as_label(mapping$x)
+      tissue     <- phenodata$Tissue[match(varname, phenodata$Sample_name2)]
+      color_val  <- mycolors1[[tissue]]
+      
+      ggplot2::ggplot(data = data, mapping = mapping) +
+        ggplot2::geom_density(fill = color_val, alpha = 0.4) +
+        ggplot2::theme_void() +
+        ggplot2::theme(
+          panel.background = ggplot2::element_rect(
+            fill   = color_val,
+            colour = "black",
+            size   = 2
+          )
+        )
     }
+    
+    
     
     custom_ggally_cor <- function(data, mapping, ...) {
       x <- eval_data_col(data, mapping$x)
@@ -2438,35 +2692,85 @@ server <- function(input, output, session) {
         ggplot2::theme(plot.title = element_blank(), axis.title = element_blank())
     }
     
-    ggpairs(
+    ggp <- ggpairs(
       data = as.data.frame(selected_data),
       upper = list(continuous = create_upper),
-      diag = list(continuous = create_diag),
+      diag  = list(continuous = create_diag),
       lower = list(continuous = wrap("points", color = "black", alpha = 0.5))
-    ) + ggplot2::theme(
-      legend.position = "none",
-      legend.box = "horizontal",
-      legend.box.just = "center",
-      legend.text = element_text(size = 14),
-      legend.title = element_text(size = 16),
-      legend.background = element_rect(fill = "#f0f0f0", color = "black"),
-      legend.key = element_rect(fill = "white", color = "black"),
-      legend.key.size = unit(1.5, "lines"),
-      axis.text.x = element_text(size = 14),  # Axis text size
-      axis.text.y = element_text(size = 14),  # Axis text size
-      axis.title.x = element_text(size = 16), # Axis title size
-      axis.title.y = element_text(size = 16), # Axis title size
-      strip.text = element_text(size = 14)    # Row and column label size
     )
     
+    n_tiss <- if (debounced_correlation_mode() == "selected") {
+      length(unique(c(input$tissue_select1, input$tissue_select2)))
+    } else {
+      length(unique(phenodata$Tissue[phenodata$System == input$correlation_system]))
+    }
+    
+    # pick a font size that scales down when there are many tissues
+    strip_font <- if (n_tiss <= 5) {
+      14
+    } else if (n_tiss <= 10) {
+      10
+    } else {
+      8
+    }
+    
+    ggp +
+      ggplot2::theme_minimal() +
+      # force strips outside the plot panel
+      ggplot2::theme(
+        strip.placement    = "outside",
+        strip.background   = ggplot2::element_blank(),
+        # move top strip labels up a bit less aggressively
+        strip.text.x = ggplot2::element_text(
+          angle  = 0,
+          hjust  = 0.5,
+          vjust  = 0.5,
+          size   = strip_font
+        ),
+        # make sure nothing gets clipped
+        plot.margin     = ggplot2::margin(10, 10, 10, 10),
+        panel.spacing.x = grid::unit(0.5, "lines"),
+        # right strip labels horizontally, nudged left
+        strip.text.y       = ggplot2::element_text(
+          angle   = 0,
+          hjust   = 1,
+          vjust   = 0.5,
+          size    = strip_font,
+          margin  = ggplot2::margin(l = 6)  # add left margin
+        ),
+        panel.spacing.y    = grid::unit(0.5, "lines"),
+        # legend down below, horizontal
+        legend.position    = "bottom",
+        legend.direction   = "horizontal",
+        legend.title       = ggplot2::element_blank(),
+        legend.text        = ggplot2::element_text(size = strip_font),
+        legend.key.height  = grid::unit(0.4, "cm"),
+        legend.key.width   = grid::unit(0.4, "cm")
+      )
+    
     
   })
   
+  system_corr_plot <- eventReactive(input$confirm_cor_plot, {
+    generate_correlation_plot()
+  })
   
   output$correlation_plot <- renderPlot({
-    req(generate_correlation_plot())
-    print(generate_correlation_plot())
+    shiny::withProgress(message = "Generating correlation plot...", value = 0, {
+      shiny::incProgress(0.2)
+      if (input$correlation_mode == "system") {
+        req(system_corr_plot())
+        p <- system_corr_plot()
+      } else {
+        p <- generate_correlation_plot()
+      }
+      shiny::incProgress(0.7)
+      print(p)
+      shiny::incProgress(1)
+    })
   })
+  
+  
   
   output$download_correlation_plot <- downloadHandler(
     filename = function() {
@@ -2614,7 +2918,7 @@ server <- function(input, output, session) {
       
       if (length(top_genes) > 0) {
         updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
-
+        
         if (!is.null(top_genes) && length(top_genes) > 0) {
           updateBarplotData(top_genes)
         }
@@ -2720,6 +3024,8 @@ server <- function(input, output, session) {
         facet_wrap(~ Gene, scales = "free", ncol = 1) +
         theme_minimal() +
         ggplot2::theme(
+          axis.text.y = element_text(size = 18),
+          axis.title.y = element_text(size = 24),
           axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
           panel.spacing = unit(0.5, "lines"),
           panel.border = element_rect(color = "black", fill = NA, size = 0.5),
@@ -2752,10 +3058,18 @@ server <- function(input, output, session) {
     
     showNotification("Genes grabbed.", type = "message")
   })
-
+  
   observeEvent(input$transfer_to_heatmap, {
     transferred_genes <- strsplit(input$barplot_searched_gene, ",\\s*")[[1]]
     transferred_genes <- toupper(transferred_genes)
+    
+    if (length(transferred_genes) < 2) {
+      showNotification(
+        "Please select at least two genes to generate a heatmap.",
+        type = "warning"
+      )
+      return()
+    }
     
     rpkm_filtered <- RPKM_data %>%
       filter(rownames(.) %in% transferred_genes)
@@ -2965,53 +3279,53 @@ server <- function(input, output, session) {
     rpkm_tau <- as.matrix(rpkm_filtered)
     
     variances <- apply(t(rpkm_tau), 2, var)
-
-      top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
-      rpkm_heatmap <- rpkm_tau[top_genes, ]
+    
+    top_genes <- order(variances, decreasing = TRUE)[1:input$n_variable_genes]
+    rpkm_heatmap <- rpkm_tau[top_genes, ]
     
     
-      # Process annotation data
-      annotation <- phenodata %>%
-        filter(Sample_name %in% samples) %>%
-        dplyr::select(Sample_name, Tissue, System) %>%
-        mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
-        column_to_rownames(var = "Sample_name")
-      
-      # Ensure Tissue and System columns are characters
-      annotation$Tissue <- as.character(annotation$Tissue)
-      annotation$System <- as.character(annotation$System)
-      
-      # Get unique tissues and systems
-      present_tissues <- unique(annotation$Tissue)
-      present_systems <- unique(annotation$System)
-      
-      print("Present tissues:")
-      print(present_tissues)
-      
-      print("Present systems:")
-      print(present_systems)
-      
-      # Check if all tissues and systems have colors in mycolors1 and mycolors2
-      missing_tissue_colors <- setdiff(present_tissues, names(mycolors1))
-      missing_system_colors <- setdiff(present_systems, names(mycolors2))
-      
-      # Stop with an error if there are missing colors
-      if (length(missing_tissue_colors) > 0) {
-        stop(paste("Missing colors for tissues:", paste(missing_tissue_colors, collapse = ", ")))
-      }
-      if (length(missing_system_colors) > 0) {
-        stop(paste("Missing colors for systems:", paste(missing_system_colors, collapse = ", ")))
-      }
-      
-      # Define annotation colors
-      annotation_colors <- list(
-        Tissue = mycolors1[present_tissues],
-        System = mycolors2[present_systems]
-      )
-      
-      print("Annotation colors:")
-      print(annotation_colors)
-      
+    # Process annotation data
+    annotation <- phenodata %>%
+      filter(Sample_name %in% samples) %>%
+      dplyr::select(Sample_name, Tissue, System) %>%
+      mutate(Sample_name = gsub("Sample_", "", Sample_name)) %>%
+      column_to_rownames(var = "Sample_name")
+    
+    # Ensure Tissue and System columns are characters
+    annotation$Tissue <- as.character(annotation$Tissue)
+    annotation$System <- as.character(annotation$System)
+    
+    # Get unique tissues and systems
+    present_tissues <- unique(annotation$Tissue)
+    present_systems <- unique(annotation$System)
+    
+    print("Present tissues:")
+    print(present_tissues)
+    
+    print("Present systems:")
+    print(present_systems)
+    
+    # Check if all tissues and systems have colors in mycolors1 and mycolors2
+    missing_tissue_colors <- setdiff(present_tissues, names(mycolors1))
+    missing_system_colors <- setdiff(present_systems, names(mycolors2))
+    
+    # Stop with an error if there are missing colors
+    if (length(missing_tissue_colors) > 0) {
+      stop(paste("Missing colors for tissues:", paste(missing_tissue_colors, collapse = ", ")))
+    }
+    if (length(missing_system_colors) > 0) {
+      stop(paste("Missing colors for systems:", paste(missing_system_colors, collapse = ", ")))
+    }
+    
+    # Define annotation colors
+    annotation_colors <- list(
+      Tissue = mycolors1[present_tissues],
+      System = mycolors2[present_systems]
+    )
+    
+    print("Annotation colors:")
+    print(annotation_colors)
+    
     
     print(annotation_colors)
     
@@ -3066,34 +3380,54 @@ server <- function(input, output, session) {
     print(heatmap)
   })
   
-  observeEvent(input$heatmap_tissue_specific_brush, {
-    brush_data <- input$heatmap_tissue_specific_brush
-    
+  # Create a separate reactive value for tissue-specific selected genes
+  tissue_specific_selected_genes <- reactiveVal(NULL)
+  
+  # Create a debounced reactive for the brush input (500ms delay)
+  tissue_specific_brush <- debounce(reactive(input$heatmap_tissue_specific_brush), 500)
+  
+  observeEvent(tissue_specific_brush(), {
+    brush_data <- tissue_specific_brush()
     if (!is.null(brush_data)) {
       heatmap_rows <- ordered_tissue_specific_genes()
       total_height <- length(heatmap_rows)
       
       start_row_index <- total_height - ceiling(brush_data$ymin * total_height) + 1
-      end_row_index <- total_height - ceiling(brush_data$ymax * total_height) + 1
-      
+      end_row_index   <- total_height - ceiling(brush_data$ymax * total_height) + 1
       start_row_index <- max(min(start_row_index, total_height), 1)
-      end_row_index <- max(min(end_row_index, total_height), 1)
-
-      selected_rows <- heatmap_rows[end_row_index:start_row_index]
+      end_row_index   <- max(min(end_row_index, total_height), 1)
       
-      selected_genes(selected_rows)
+      selected_rows <- heatmap_rows[end_row_index:start_row_index]
+      if(length(selected_rows) == 0){
+        showNotification("No genes selected from brush.", type = "warning")
+        return()
+      }
+      tissue_specific_selected_genes(selected_rows)
       
       showModal(modalDialog(
         title = "Selected Genes",
-        paste(paste(selected_rows, collapse = ", ")),
+        paste(selected_rows, collapse = ", "),
         footer = tagList(
           actionButton("add_to_cart_tissue_specific_modal", "Grab Genes"),
           modalButton("Close")
         ),
-        easyClose = TRUE
+        easyClose = FALSE  # Prevent auto-closing when clicking outside
       ))
     }
   })
+  
+  
+  observeEvent(input$add_to_cart_tissue_specific_modal, {
+    genes_to_add <- tissue_specific_selected_genes()
+    if (!is.null(genes_to_add) && length(genes_to_add) > 0) {
+      request_add_genes(genes_to_add)
+      showNotification("Genes grabbed.", type = "message")
+    } else {
+      showNotification("No genes selected.", type = "warning")
+    }
+  })
+  
+  
   
   output$download_tissue_specific_heatmap <- downloadHandler(
     filename = function() {
@@ -3104,317 +3438,355 @@ server <- function(input, output, session) {
     }
   )
   
-  observeEvent(input$add_to_cart_tissue_specific_modal, {
-    genes_to_add <- selected_genes()
-    
-    if (!is.null(genes_to_add)) {
-      request_add_genes(genes_to_add)
-      
+  
+  observeEvent(input$add_to_cart_tissue_specific_heatmap, {
+    selected_genes <- isolate(ordered_tissue_specific_genes())
+    if(length(selected_genes) == 0){
+      showNotification("No genes are currently displayed.", type = "warning")
+    } else {
+      request_add_genes(selected_genes)
       showNotification("Genes grabbed.", type = "message")
-      
-      removeModal()
     }
   })
   
-  
-  observeEvent(input$add_to_cart_tissue_specific_heatmap, {
-    
-    request_add_genes(ordered_tissue_specific_genes())
-    
-    showNotification("Genes grabbed.", type = "message")
-  })
   
   ##############
   
   # Raincloud Plot
   
-  make_raincloud_plot <- function(data, show_mean_line, show_points, facet_by_tissue = FALSE) {
-    data <- dplyr::distinct(data)
-    
-    gg <- ggplot2::ggplot(data, ggplot2::aes(y = score, x = if (facet_by_tissue) Tissue else 1)) +
-      {if (show_points) ggiraph::geom_point_interactive(
-        ggplot2::aes(
-          x = 0.87,
-          color = Gene,
-          tooltip = paste("Gene:", Gene, "<br>Score:", round(score, 4)),
-          data_id = Gene
-        ),
-        position = ggplot2::position_jitter(width = 0.06, height = 0),
-        shape = 16,
-        alpha = 0.7,
-        size = 2
-      ) else NULL} +
-      {if (nrow(data) > 2) gghalves::geom_half_violin(
-        side = "r",
-        trim = FALSE,
-        fill = "grey",
-        alpha = 0.6,
-        color = "black"
-      ) else NULL} +
-      ggplot2::geom_boxplot(
-        width = 0.1,
-        outlier.shape = NA,
-        alpha = 0.6,
-        color = "black"
-      ) +
-      {if (show_mean_line) ggplot2::stat_summary(fun = mean, geom = "crossbar", width = 0.075, color = "red") else NULL} +
-      ggplot2::coord_flip() +
-      ggplot2::theme_minimal(base_size = 14) +
-      ggplot2::scale_x_discrete(breaks = NULL) +
-      ggplot2::scale_color_viridis_d(option = "D", end = 0.9) +
-      ggplot2::labs(
-        x = NULL,
-        y = "Score",
-        title = "Raincloud Plot"
-      ) +
-      ggplot2::theme(
-        axis.ticks.y = ggplot2::element_blank(),
-        plot.title = ggplot2::element_text(hjust = 0.5),
-        legend.position = "none"
-      )
-    
-    if (facet_by_tissue) {
-      gg <- gg + ggplot2::facet_wrap(~Tissue, scales = "free", ncol = 1)
-    }
-    
-    ggiraph::girafe(ggobj = gg, width_svg = 8, height_svg = 6)
-  }
+  # 1) Load ASE data --------------------------------------------------------
   
-  make_static_raincloud_plot <- function(data, show_mean_line, show_points, facet_by_tissue = FALSE) {
-    data <- dplyr::distinct(data)
-    
-    gg <- ggplot2::ggplot(data, ggplot2::aes(y = score, x = if (facet_by_tissue) Tissue else 1)) +
-      {if (show_points) ggplot2::geom_point(
-        ggplot2::aes(
-          x = 0.87,
-          color = Gene
-        ),
-        position = ggplot2::position_jitter(width = 0.06, height = 0),
-        shape = 16,
-        alpha = 0.7,
-        size = 2
-      ) else NULL} +
-      {if (nrow(data) > 2) gghalves::geom_half_violin(
-        side = "r",
-        trim = FALSE,
-        fill = "grey",
-        alpha = 0.6,
-        color = "black"
-      ) else NULL} +
-      ggplot2::geom_boxplot(
-        width = 0.1,
-        outlier.shape = NA,
-        alpha = 0.6,
-        color = "black"
-      ) +
-      {if (show_mean_line) ggplot2::stat_summary(fun = mean, geom = "crossbar", width = 0.075, color = "red") else NULL} +
-      ggplot2::coord_flip() +
-      ggplot2::theme_minimal(base_size = 14) +
-      ggplot2::scale_x_discrete(breaks = NULL) +
-      ggplot2::scale_color_viridis_d(option = "D", end = 0.9) +
-      ggplot2::labs(
-        x = NULL,
-        y = "Score",
-        title = "Raincloud Plot"
-      ) +
-      ggplot2::theme(
-        axis.ticks.y = ggplot2::element_blank(),
-        plot.title = ggplot2::element_text(hjust = 0.5),
-        legend.position = "none"
-      )
-    
-    if (facet_by_tissue) {
-      gg <- gg + ggplot2::facet_wrap(~Tissue, scales = "free", ncol = 1)
-    }
-    
-    return(gg)
-  }
-  
-  gene_ase_path <- "data/all.geneAse.info827.txt"
-  
-  gene_ase_df <- shiny::reactiveVal(data.frame(Gene = character(), n.vars = numeric(), score = numeric(), fdr = numeric(), Tissue = character()))
-  selected_genes <- shiny::reactiveVal(NULL)
-  
+  # SNP ASE
+  # 2) Load SNP ASE data
+  snp_ase_path <- "data/all.snpAse_0906.txt"
+  snp_ase_df   <- shiny::reactiveVal(data.frame())
   shiny::observe({
-    if (file.exists(gene_ase_path)) {
-      shiny::withProgress(message = 'Loading Gene ASE Data...', value = 0, {
-        tryCatch({
-          df <- utils::read.delim(gene_ase_path, header = TRUE, stringsAsFactors = FALSE, sep = "\t")
-          df <- df %>% dplyr::rename(score = mean.s) %>% dplyr::select(Gene, n.vars, score, fdr, Tissue)
-          gene_ase_df(df)
-          tissues <- sort(unique(df$Tissue))
-          shiny::updateSelectInput(session, "tissue_select_raincloud", choices = c("All Tissues", tissues), selected = "All Tissues")
-          shiny::incProgress(1)
-        }, error = function(e) {
-        })
-      })
-    } else {
-    }
+    req(file.exists(snp_ase_path))
+    withProgress(message = "Loading SNP ASE...", value = 0, {
+      df <- read.delim(snp_ase_path, stringsAsFactors = FALSE)
+      if (!"AE" %in% colnames(df)) {
+        df <- df %>% mutate(
+          Rratio = REF_COUNT/(REF_COUNT+ALT_COUNT),
+          AE     = abs(0.5 - Rratio)
+        )
+      }
+      
+      # Recode here
+      df$Tissue <- str_replace_all(df$Tissue, repl)
+      
+      if (!"Tissue" %in% colnames(df)) stop("Missing Tissue column")
+      snp_ase_df(df)
+      
+      updateSelectInput(session, "tissue_select_raincloud",
+                        choices  = c("All Tissues", sort(unique(df$Tissue))),
+                        selected = "All Tissues"
+      )
+      
+      incProgress(1)
+    })
   })
   
-  shiny::observeEvent(input$tissue_select_raincloud, {
-    df <- gene_ase_df()
-    shiny::req(df)
+  
+  # 2) Search / random helpers -----------------------------------------------
+  
+  ## 3) Helpers for clearing & random selection ####
+  selected_genes <- shiny::reactiveVal(NULL)
+  selected_snps  <- shiny::reactiveVal(NULL)
+  
+  # clear both gene & SNP selections
+  # in your server, replace the existing clear_search_raincloud observer
+  # with this one (or just add the two extra lines):
+  
+  # in server.R, after you’ve declared selected_genes/selected_snps:
+  shiny::observeEvent(input$clear_search_raincloud, {
+    # 1) Clear out whatever was typed in the gene & SNP boxes:
+    shiny::updateTextInput(session,
+                           inputId = "raincloud_searched_gene",
+                           value   = "")
+    shiny::updateTextInput(session,
+                           inputId = "raincloud_searched_snp",
+                           value   = "")
     
-    if ("All Tissues" %in% input$tissue_select_raincloud) {
-      shiny::updateSelectizeInput(session, "gene_search_select", choices = sort(unique(df$Gene)), selected = NULL)
-    } else {
-      shiny::updateSelectizeInput(session, "gene_search_select", choices = NULL, selected = NULL)
-    }
-  })
-  
-  shiny::observeEvent(input$gene_search_select, {
-    if (!is.null(input$gene_search_select) && length(input$gene_search_select) > 0) {
-      # Clear random genes when a gene is searched
-      selected_genes(NULL)
-      shiny::showNotification("Random genes list cleared. Showing selected genes.", type = "message")
-    }
-  })
-  
-  shiny::observeEvent(input$reset_top_genes, {
-    # Clear random genes
+    # 2) Reset the tissue picker back to ALL:
+    #    (must match exactly the “All Tissues” choice in your selectInput)
+    shiny::updateSelectInput(session,
+                             inputId  = "tissue_select_raincloud",
+                             selected = "All Tissues")
+    
+    # 3) Clear any internal reactiveVals just in case you’re also
+    #    using those to drive logic (won’t hurt to reset them):
     selected_genes(NULL)
-    
-    # Clear the search bar
-    shiny::updateSelectizeInput(session, "gene_search_select", selected = NULL)
-    
-    # Notify the user
-    shiny::showNotification("Reset to Top Genes. Showing the top selected genes.", type = "message")
+    selected_snps(NULL)
+  })
+  
+  # random genes
+  # random genes
+  shiny::observeEvent(input$random_genes_raincloud, {
+    df <- gene_ase_df()
+    if (nrow(df) >= input$top_n_raincloud) {
+      genes <- sample(unique(df$Gene), size = input$top_n_raincloud)
+      selected_genes(genes)
+      shiny::updateTextInput(
+        session,
+        inputId = "raincloud_searched_gene",
+        value   = paste(genes, collapse = ",")
+      )
+    }
+  })
+  
+  # random SNPs
+  shiny::observeEvent(input$random_snps_raincloud, {
+    df <- snp_ase_df()
+    if (nrow(df) >= input$top_n_raincloud) {
+      ids <- sample(unique(df$ID), size = input$top_n_raincloud)
+      selected_snps(ids)
+      shiny::updateTextInput(
+        session,
+        inputId = "raincloud_searched_snp",
+        value   = paste(ids, collapse = ",")
+      )
+    }
+  })
+  
+  ## ——— 1) Load Gene ASE data ——————————————————————————————————————
+  # — 1) Load Gene ASE data, coerce score unambiguously —
+  gene_ase_path <- "data/all.geneAse.info827.txt"
+  gene_ase_df   <- shiny::reactiveVal(data.frame())
+  shiny::observe({
+    if (!file.exists(gene_ase_path)) return()
+    withProgress(message = "Loading Gene ASE...", value = 0, {
+      df <- read.delim(gene_ase_path, stringsAsFactors = FALSE)
+      df$mean.s <- as.numeric(df$mean.s)
+      df <- df[, c("Gene","n.vars","mean.s","fdr","Tissue")]
+      
+      # Recode here
+      df$Tissue <- str_replace_all(df$Tissue, repl)
+      
+      gene_ase_df(df)
+      updateSelectInput(session, "tissue_select_raincloud",
+                        choices  = c("All Tissues", sort(unique(df$Tissue))),
+                        selected = "All Tissues"
+      )
+      incProgress(1)
+    })
   })
   
   
-  
-  shiny::observeEvent(input$random_genes, {
-    df <- gene_ase_df()
-    shiny::req(df)
+  ## ——— 3) The unified raincloud‐plot function ————————————————————————
+  make_raincloud_plot <- function(data,
+                                  yvar,
+                                  show_mean_line,
+                                  show_points,
+                                  facet_by_tissue = FALSE) {
+    # Deduplicate
+    data <- dplyr::distinct(data)
     
-    # Clear searched genes in the UI and backend
-    shiny::updateSelectizeInput(session, "gene_search_select", selected = NULL)
-    session$sendInputMessage("gene_search_select", list(value = ""))
+    # Base ggplot
+    p <- ggplot2::ggplot(
+      data,
+      ggplot2::aes_string(
+        x = if (facet_by_tissue) "Tissue" else "1",
+        y = yvar
+      )
+    )
     
-    if (is.null(input$tissue_select_raincloud) || length(input$tissue_select_raincloud) == 0) {
-      return()
+    # Add interactive points (horizontal jitter small, vertical jitter tiny)
+    if (show_points) {
+      idvar   <- if (yvar == "mean.s") "Gene" else "ID"
+      tooltip <- if (yvar == "mean.s") {
+        "paste0('Gene: ', Gene, '<br>Mean effect: ', round(mean.s, 3))"
+      } else {
+        "paste0('SNP: ', ID, '<br>AE: ', round(AE, 3))"
+      }
+      p <- p + ggiraph::geom_point_interactive(
+        ggplot2::aes_string(
+          x       = "0.87",
+          color   = idvar,
+          tooltip = tooltip,
+          data_id = idvar
+        ),
+        position = ggplot2::position_jitter(width = 0.02, height = 0.03),
+        shape    = 16,
+        alpha    = 0.7,
+        size     = 2
+      )
     }
     
-    random_genes_list <- list()
+    # Half-violin (if enough points)
+    if (nrow(data) > 2) {
+      p <- p + gghalves::geom_half_violin(
+        side   = "r",
+        trim   = FALSE,
+        fill   = "grey",
+        alpha  = 0.6,
+        color  = "black"
+      )
+    }
     
-    if ("All Tissues" %in% input$tissue_select_raincloud) {
-      all_genes <- unique(df$Gene)
-      if (length(all_genes) < 10) {
-        shiny::showNotification("Not enough genes in the dataset for random selection.", type = "warning")
-        selected_genes(NULL)
-        return()
-      }
-      random_genes <- sample(all_genes, size = 10, replace = FALSE)
-      random_genes_list[["All Tissues"]] <- random_genes
+    # Boxplot
+    p <- p + ggplot2::geom_boxplot(
+      width         = 0.1,
+      outlier.shape = NA,
+      alpha         = 0.6,
+      color         = "black"
+    )
+    
+    # Optional mean line
+    if (show_mean_line) {
+      p <- p + ggplot2::stat_summary(
+        fun   = mean,
+        geom  = "crossbar",
+        width = 0.075,
+        color = "red"
+      )
+    }
+    
+    # Flip coordinates, theme, labels
+    p <- p +
+      ggplot2::coord_flip() +
+      ggplot2::theme_minimal(base_size = 14) +
+      ggplot2::labs(
+        x     = NULL,
+        y     = if (yvar == "mean.s") "Mean Effect" else "AE",
+        title = if (yvar == "mean.s")
+          "Raincloud Plot: Gene ASE (mean effect)"
+        else
+          "Raincloud Plot: SNP ASE (AE)"
+      ) +
+      ggplot2::theme(
+        axis.ticks.y    = ggplot2::element_blank(),
+        plot.title      = ggplot2::element_text(hjust = 0.5),
+        legend.position = "none"
+      )
+    
+    # Facet by tissue if requested
+    if (facet_by_tissue) {
+      p <- p + ggplot2::facet_wrap(~ Tissue, scales = "free", ncol = 1)
+    }
+    
+    # Return interactive ggiraph object
+    ggiraph::girafe(
+      ggobj     = p,
+      width_svg = 8,
+      height_svg= 6
+    )
+  }
+  
+  # 4) Reactive selection of gene vs snp data --------------------------------
+  
+  ## 4) Reactive dataset with proper Tissue & search filtering ####
+  filtered_data_raincloud <- shiny::reactive({
+    # pick the right dataframe
+    df <- if (input$raincloud_data_type == "gene") {
+      gene_ase_df() %>% dplyr::filter(fdr <= input$pval_cutoff)
     } else {
-      for (tissue in input$tissue_select_raincloud) {
-        tissue_df <- df %>% dplyr::filter(Tissue == tissue)
-        if (dplyr::n_distinct(tissue_df$Gene) < 10) {
-          next
+      snp_ase_df()  %>% dplyr::filter(FDR <= input$pval_cutoff)
+    }
+    
+    # tissue filter
+    sel_t <- input$tissue_select_raincloud
+    if (!is.null(sel_t) && !"All Tissues" %in% sel_t) {
+      df <- df %>% dplyr::filter(Tissue %in% sel_t)
+    }
+    
+    # SEARCH: priority to random selection, else textInput
+    if (input$raincloud_data_type == "gene") {
+      
+      if (!is.null(selected_genes())) {
+        df <- df %>% dplyr::filter(Gene %in% selected_genes())
+      } else {
+        genes <- strsplit(input$raincloud_searched_gene, ",\\s*")[[1]]
+        if (length(genes) && nzchar(genes[1])) {
+          df <- df %>% dplyr::filter(Gene %in% genes)
         }
-        random_genes <- sample(unique(tissue_df$Gene), size = 10, replace = FALSE)
-        random_genes_list[[tissue]] <- random_genes
       }
-    }
-    
-    if (length(random_genes_list) == 0) {
-      selected_genes(NULL)
-      return()
-    }
-    
-    selected_genes(random_genes_list)
-    shiny::showNotification("Random genes selected successfully!", type = "message")
-  })
-  
-  
-  
-  filtered_data <- shiny::reactive({
-    df <- gene_ase_df()
-    shiny::req(df)
-    
-    # Filter by FDR cutoff
-    df <- df %>% dplyr::filter(fdr <= input$pval_cutoff)
-    
-    # If 'All Tissues' is selected and specific genes are searched
-    if ("All Tissues" %in% input$tissue_select_raincloud && !is.null(input$gene_search_select)) {
-      df <- df %>% dplyr::filter(Gene %in% input$gene_search_select)
-    }
-    
-    # Handle random genes selection
-    random_genes_list <- selected_genes()
-    if (!is.null(random_genes_list)) {
-      if ("All Tissues" %in% names(random_genes_list)) {
-        df <- df %>% dplyr::filter(Gene %in% random_genes_list[["All Tissues"]])
-      } else {
-        df <- df %>% dplyr::filter(Tissue %in% names(random_genes_list) & Gene %in% unlist(random_genes_list))
-      }
+      # top N genes by mean effect
+      topN <- df %>%
+        dplyr::group_by(Gene) %>%
+        dplyr::summarise(m = mean(score, na.rm = TRUE), .groups = "drop") %>%
+        dplyr::arrange(dplyr::desc(m)) %>%
+        head(input$top_n_raincloud) %>%
+        dplyr::pull(Gene)
+      df <- df %>% dplyr::filter(Gene %in% topN)
+      
     } else {
-      # Filter for top N genes
-      if ("All Tissues" %in% input$tissue_select_raincloud) {
-        top_genes <- df %>%
-          dplyr::group_by(Gene) %>%
-          dplyr::summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop") %>%
-          dplyr::arrange(dplyr::desc(mean_score)) %>%
-          dplyr::slice_head(n = input$top_n_raincloud)
-        df <- df %>% dplyr::filter(Gene %in% top_genes$Gene)
+      
+      if (!is.null(selected_snps())) {
+        df <- df %>% dplyr::filter(ID %in% selected_snps())
       } else {
-        df <- df %>% dplyr::filter(Tissue %in% input$tissue_select_raincloud)
-        top_genes <- df %>%
-          dplyr::group_by(Tissue, Gene) %>%
-          dplyr::summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop") %>%
-          dplyr::arrange(Tissue, dplyr::desc(mean_score)) %>%
-          dplyr::group_by(Tissue) %>%
-          dplyr::slice_head(n = input$top_n_raincloud)
-        df <- df %>% dplyr::filter(Gene %in% top_genes$Gene)
+        ids <- strsplit(input$raincloud_searched_snp, ",\\s*")[[1]]
+        if (length(ids) && nzchar(ids[1])) {
+          df <- df %>% dplyr::filter(ID %in% ids)
+        }
       }
-    }
-    
-    if (nrow(df) == 0) {
-      shiny::req(FALSE)
+      # top N SNPs by AE
+      topN <- df %>%
+        dplyr::group_by(ID) %>%
+        dplyr::summarise(ae = mean(AE, na.rm = TRUE), .groups = "drop") %>%
+        dplyr::arrange(dplyr::desc(ae)) %>%
+        head(input$top_n_raincloud) %>%
+        dplyr::pull(ID)
+      df <- df %>% dplyr::filter(ID %in% topN)
+      
     }
     df
   })
   
+  # 5) Render, download & grab selections -----------------------------------
   
   output$raincloud_plot <- ggiraph::renderGirafe({
-    data <- filtered_data()
-    shiny::req(data)
-    facet_by_tissue <- !("All Tissues" %in% input$tissue_select_raincloud)
-    make_raincloud_plot(data, input$show_mean_line, input$show_points, facet_by_tissue)
+    df    <- filtered_data_raincloud()
+    shiny::req(nrow(df) > 0)
+    facet <- !"All Tissues" %in% input$tissue_select_raincloud
+    yvar  <- if (input$raincloud_data_type == "gene") "mean.s" else "AE"
+    
+    make_raincloud_plot(
+      data            = df,
+      yvar            = yvar,
+      show_mean_line  = input$show_mean_line,
+      show_points     = input$show_points,
+      facet_by_tissue = facet
+    )
   })
   
   output$download_raincloud_plot <- shiny::downloadHandler(
-    filename = function() { "raincloud_plot.png" },
-    content = function(file) {
-      data <- filtered_data()
-      shiny::req(data)
-      facet_by_tissue <- !("All Tissues" %in% input$tissue_select_raincloud)
-      plot <- make_static_raincloud_plot(data, input$show_mean_line, input$show_points, facet_by_tissue)
-      ggplot2::ggsave(file, plot, width = 10, height = 6)
+    filename = function()   "raincloud.png",
+    content  = function(file) {
+      df    <- filtered_data_raincloud()
+      facet <- !("All Tissues" %in% input$tissue_select_raincloud)
+      yvar  <- if (input$raincloud_data_type=="gene") "score" else "AE"
+      p     <- make_static_raincloud_plot(df, yvar, input$show_mean_line, input$show_points, facet)
+      ggplot2::ggsave(file, plot = p, width = 10, height = 6)
     }
   )
   
-  observeEvent(input$add_displayed_genes_ase, {
-    data <- filtered_data()
-    req(data)
-    
-    # Extract the genes currently displayed in the raincloud plot
-    displayed_genes <- unique(data$Gene)
-    
-    if (length(displayed_genes) > 0) {
-      request_add_genes(displayed_genes)
-      showNotification(paste(length(displayed_genes), "genes added to the cart."), type = "message")
-    } else {
-      showNotification("No genes to add.", type = "warning")
+  ## only grab when in gene‐ASE mode:
+  shiny::observeEvent(input$grab_selected_raincloud, {
+    req(input$raincloud_data_type == "gene")
+    sel <- input$raincloud_plot_selected
+    if (length(sel)) {
+      request_add_genes(sel)
+      shiny::showNotification(paste(length(sel), "genes grabbed"), type="message")
     }
   })
+  
+  ## and same for “Grab All Displayed”:
+  shiny::observeEvent(input$grab_displayed_raincloud, {
+    req(input$raincloud_data_type == "gene")
+    df  <- filtered_data_raincloud()
+    ids <- unique(df$Gene)
+    if (length(ids)) {
+      request_add_genes(ids)
+      shiny::showNotification(paste(length(ids), "genes added"), type="message")
+    }
+  })
+  
   
   
   #############
   
   # Genome Browser
-
+  
   ###########################################
   # PART A: Tissue-Gene info from the TXT
   ###########################################
@@ -3423,19 +3795,15 @@ server <- function(input, output, session) {
   
   observe({
     info_path <- "browser_data_for_app/all.geneAse.info827.txt"
-    if (!file.exists(info_path)) {
-      showNotification("Cannot find all.geneAse.info827.txt. No Tissue list will be available.", type="error")
-      return(NULL)
-    }
+    req(file.exists(info_path))
+    df_info <- read.delim(info_path, stringsAsFactors = FALSE)
     
-    df_info <- read.delim(info_path, header=TRUE, stringsAsFactors=FALSE)
-    if (!all(c("Gene", "Tissue") %in% colnames(df_info))) {
-      showNotification("Missing 'Gene' or 'Tissue' columns in the TXT file.", type="error")
-      return(NULL)
-    }
+    # Recode here
+    df_info$Tissue <- str_replace_all(df_info$Tissue, repl)
     
     gene_ase_df(df_info)
   })
+  
   
   # Add "All Tissues" to the checkbox
   observe({
@@ -3829,7 +4197,7 @@ server <- function(input, output, session) {
   observeEvent(input$load_snp, {
     showNotification("Loading SNP ASE track. This may take a few minutes...", type="message")
     
-    vcf_path <- "data_for_app/ASE.SNP.gallus.updated02.vcf"
+    vcf_path <- "browser_data_for_app/ASE.SNP.gallus.updated02.vcf"
     if (!file.exists(vcf_path)) {
       showNotification("SNP VCF file not found.", type="error")
       return(NULL)
@@ -3882,40 +4250,43 @@ server <- function(input, output, session) {
   
   
   ###########################################
-  # GRAB ALL ASE GENES (Example)
+  # GRAB ALL ASE GENES
   ###########################################
   observeEvent(input$grab_all_ase_genes, {
     bed_path <- "browser_data_for_app/gene_ase_converted_cleaned_with_strand.bed"
     if (!file.exists(bed_path)) {
-      showNotification("Gene ASE bed file not found for 'Grab All ASE Genes'.", type="error")
+      showNotification("Gene ASE bed file not found for 'Grab All ASE Genes'.", type = "error")
       return(NULL)
     }
     
-    withProgress(message='Grabbing All ASE Genes...', value=0, {
+    withProgress(message = 'Grabbing All ASE Genes...', value = 0, {
       tryCatch({
-        bed_data <- rtracklayer::import(bed_path, format="bed")
-        bed_df   <- as.data.frame(bed_data)
-        
-        # If bed uses "name" as the gene
+        bed_data <- rtracklayer::import(bed_path, format = "bed")
+        bed_df <- as.data.frame(bed_data)
         all_ase_genes <- character(0)
+        
         if ("name" %in% colnames(bed_df)) {
           all_ase_genes <- toupper(bed_df$name)
         }
         
-        showNotification(
-          paste("All ASE Genes grabbed:", length(all_ase_genes)),
-          type="message"
-        )
+        if (length(all_ase_genes) == 0) {
+          showNotification("No ASE genes found in the bed file.", type = "error")
+          return(NULL)
+        }
         
+        # Add all ASE genes to the gene cart
+        request_add_genes(all_ase_genes)
+        
+        showNotification(paste("All ASE Genes grabbed:", length(all_ase_genes)),
+                         type = "message")
         incProgress(1)
-      }, error=function(e) {
-        showNotification(
-          paste("Error grabbing ASE genes:", e$message),
-          type="error"
-        )
+      }, error = function(e) {
+        showNotification(paste("Error grabbing ASE genes:", e$message),
+                         type = "error")
       })
     })
   })
+  
   
   ##############
   
@@ -3958,14 +4329,12 @@ server <- function(input, output, session) {
   }
   
   # Function to request adding genes, showing a modal
+  # Updated request_add_genes function
   request_add_genes <- function(new_genes) {
     new_genes <- toupper(new_genes)
-    
     new_genes_to_add(new_genes)
-    
     current_count <- length(cart_genes())
     new_count <- length(new_genes)
-    
     showModal(modalDialog(
       title = "Add Genes to Cart",
       HTML(paste0(
@@ -3982,22 +4351,35 @@ server <- function(input, output, session) {
     ))
   }
   
+  # When the user confirms gene addition via "Add to Existing"
   observeEvent(input$add_only_btn, {
     req(new_genes_to_add())
     add_to_cart(new_genes_to_add())
     new_genes_to_add(NULL)
     showNotification("Genes have been added.", type = "message")
+    shinyjs::runjs("
+      var geneTab = $('a[data-value=\"genes_tab\"]');
+      geneTab.addClass('blink');
+      setTimeout(function(){ geneTab.removeClass('blink'); }, 2000);
+  ")
     removeModal()
   })
   
+  # When the user confirms gene addition via "Clear and Add"
   observeEvent(input$clear_and_add_btn, {
     req(new_genes_to_add())
-    cart_genes(character(0)) # Clear cart
+    cart_genes(character(0))  # Clear cart
     add_to_cart(new_genes_to_add())
     new_genes_to_add(NULL)
     showNotification("Cart cleared, new genes added.", type = "message")
+    shinyjs::runjs("
+      var geneTab = $('a[data-value=\"genes_tab\"]');
+      geneTab.addClass('blink');
+      setTimeout(function(){ geneTab.removeClass('blink'); }, 2000);
+  ")
     removeModal()
   })
+  
   
   observeEvent(input$clear_cart, {
     showModal(
@@ -4101,101 +4483,107 @@ server <- function(input, output, session) {
   
   # Reactive expression to generate the table data based on the selected mode
   mode_based_gene_table <- reactive({
+    mode <- current_gene_mode()
     genes <- cart_genes()
+    
+    # If cart is empty
     if (length(genes) == 0) {
       return(data.frame(Message = "No genes in cart"))
     }
     
-    mode <- current_gene_mode()
-    
     if (mode == "de") {
-      # DE Mode
-      # Get the DE data (unfiltered_data) – this should already exist as a reactive
-      de_data <- unfiltered_data()  # Ensures that unfiltered_data is available as per your code
-      
+      # — your existing DE branch unchanged —
+      de_data <- unfiltered_data()
       if (is.null(de_data) || nrow(de_data) == 0) {
         return(data.frame(Message = "No DE data available"))
       }
-      
-      # Convert gene list to a data frame, to ensure we keep track of all genes even if not found
       gene_df <- data.frame(Gene = genes, stringsAsFactors = FALSE)
-      
-      # Join with DE data on Gene
-      # Note: unfiltered_data() returns a dataframe with rownames as genes, so ensure Gene is a column
       if (!"Gene" %in% colnames(de_data)) {
-        # If needed, move rownames of de_data to a "Gene" column
         de_data <- tibble::rownames_to_column(de_data, var = "Gene")
       }
-      
-      # Perform a left join so that all cart_genes remain, even if not found in DE data
-      merged_data <- dplyr::left_join(gene_df, de_data, by = "Gene")
-      
-      # If after join we have only Gene column, it means no data was found
-      if (ncol(merged_data) == 1) {
-        return(data.frame(Message = "No data available for these genes in DE mode"))
+      merged <- dplyr::left_join(gene_df, de_data, by = "Gene")
+      # rename log2FoldChange column
+      if ("log2FoldChange" %in% names(merged)) {
+        if (order_val() == 0) {
+          names(merged)[names(merged) == "log2FoldChange"] <-
+            paste0("log2FC (", input$tissue_select1, " up / ", input$tissue_select2, " down)")
+        } else {
+          names(merged)[names(merged) == "log2FoldChange"] <-
+            paste0("log2FC (", input$tissue_select2, " up / ", input$tissue_select1, " down)")
+        }
       }
-      
-      # Fill missing values with NA is already handled by left_join for unmatched rows
-      return(merged_data)
+      return(merged)
       
     } else if (mode == "tissue") {
-      gene_expression_data_tissue <- gene_expression_data_tissue_reactive()
       
-      if (is.null(gene_expression_data_tissue) || nrow(gene_expression_data_tissue) == 0) {
+      # 1) full tissue × gene matrix
+      full_mat <- gene_expression_data_tissue_reactive()
+      if (is.null(full_mat) || nrow(full_mat) == 0) {
         return(data.frame(Message = "No tissue-specific data available for these genes"))
       }
       
-      # Calculate Tau scores
-      tau_scores <- calcTau_custom(gene_expression_data_tissue)
-      tau_values <- tau_scores$tau
-      names(tau_values) <- tau_scores$gene
+      # 2) subset to cart genes
+      cart   <- as.character(cart_genes())
+      expr_mat <- full_mat[rownames(full_mat) %in% cart, , drop = FALSE]
+      if (nrow(expr_mat) == 0) {
+        return(data.frame(Message = "No tissue-specific data available for these genes"))
+      }
       
-      # Instead of showing all tissues, show just the average RPKM
-      mean_expression <- rowMeans(gene_expression_data_tissue, na.rm = TRUE)
+      # 3) coerce to plain numeric matrix
+      expr_mat <- as.matrix(expr_mat)
+      storage.mode(expr_mat) <- "numeric"
       
-      # Create a simple, condensed dataframe: Gene, Tau, Mean_RPKM
+      # 4) compute Tau
+      tau_df <- calcTau_custom(expr_mat)
+      
+      # 5) compute mean RPKM
+      mean_expr <- rowMeans(expr_mat, na.rm = TRUE)
+      
+      # 6) find tissue with max expression
+      top_tissue <- colnames(expr_mat)[max.col(expr_mat, ties.method = "first")]
+      
+      # 7) assemble results
       result_df <- data.frame(
-        Gene = rownames(gene_expression_data_tissue),
-        Tau = tau_values[rownames(gene_expression_data_tissue)],
-        Mean_RPKM = mean_expression,
+        Gene      = rownames(expr_mat),
+        Tau       = tau_df$tau[match(rownames(expr_mat), tau_df$gene)],
+        Mean_RPKM = mean_expr,
+        Top_Tissue= top_tissue,
         stringsAsFactors = FALSE
       )
       
-      # Ensure all cart_genes appear
-      gene_df <- data.frame(Gene = cart_genes(), stringsAsFactors = FALSE)
-      result_df <- dplyr::left_join(gene_df, result_df, by = "Gene")
-      
-      return(result_df)
-      
-    } else if (mode == "ase") {
-      # ASE Mode:
-      ase_data <- gene_ase_df()
-      
-      if (is.null(ase_data) || nrow(ase_data) == 0) {
-        return(data.frame(Message = "No ASE data available"))
-      }
-      
-      gene_df <- data.frame(Gene = cart_genes(), stringsAsFactors = FALSE)
-      
-      result_df <- dplyr::left_join(gene_df, ase_data, by = "Gene")
-      
-      # Add ASE_Status column to indicate if gene is ASE or not
-      # Assume 'score' is a key column that should be non-NA if ASE data is present
-      result_df$ASE_Status <- ifelse(is.na(result_df$score), "Not ASE", "ASE")
-      
-      # If no columns beyond Gene and ASE_Status are present, or no matches found,
-      # we still provide a clear "Not ASE" status.
-      if (all(result_df$ASE_Status == "Not ASE")) {
-        # All genes not in ASE data. The table will show them with ASE_Status = "Not ASE".
-        # That's fine as is, since we now convey that info directly.
-      }
-      
-      return(result_df)
+      # 8) preserve cart order and fill NAs
+      gene_df   <- data.frame(Gene = cart, stringsAsFactors = FALSE)
+      joined_df <- dplyr::left_join(gene_df, result_df, by = "Gene")
+      return(joined_df)
     }
     
     
-    return(data.frame(Message = "Mode not recognized"))
+    else if (mode == "ase") {
+      # your original ASE branch unchanged
+      ase_data <- gene_ase_df()
+      if (is.null(ase_data) || nrow(ase_data) == 0) {
+        return(data.frame(Message = "No ASE data available"))
+      }
+      ase_data$Gene <- toupper(ase_data$Gene)
+      if ("mean.s" %in% colnames(ase_data) && !("score" %in% colnames(ase_data))) {
+        ase_data <- ase_data %>% dplyr::rename(score = mean.s)
+      }
+      if (!("score" %in% colnames(ase_data))) {
+        ase_data$score <- NA
+      }
+      gene_df <- data.frame(Gene = toupper(genes), stringsAsFactors = FALSE)
+      result_df <- dplyr::left_join(gene_df, ase_data, by = "Gene")
+      if (nrow(result_df) > 0 && (is.null(result_df$score) || length(result_df$score) == 0)) {
+        result_df$score <- rep(NA, nrow(result_df))
+      }
+      result_df$ASE_Status <- ifelse(is.na(result_df$score), "Not ASE", "ASE")
+      return(result_df)
+      
+    } else {
+      return(data.frame(Message = "Mode not recognized"))
+    }
   })
+  
   
   
   # Note: We are not yet using mode_based_gene_table() in output$cart_gene_table. 
@@ -4203,18 +4591,76 @@ server <- function(input, output, session) {
   # with the actual data retrieval and formatting code.
   
   
+  # Render the gene cart table with full statistics and multiple row selection enabled:
   output$cart_gene_table <- renderDT({
+    # Assume mode_based_gene_table() returns your full gene statistics
     df <- mode_based_gene_table()
     
-    # If the returned data frame just has a Message column, display that as a simple table
-    if (ncol(df) == 1 && colnames(df)[1] == "Message") {
-      # Display a simple message table
-      return(datatable(df, options = list(dom = 't', paging = FALSE), rownames = FALSE))
+    # If the table is empty or has only a message, pass through unchanged.
+    if (is.null(df) || (is.data.frame(df) && nrow(df) == 0) || 
+        (is.character(df) && length(df) == 0)) {
+      return(datatable(
+        data.frame(Message = "No genes in cart"),
+        options = list(dom = 't', paging = FALSE),
+        rownames = FALSE
+      ))
     }
     
-    # Otherwise, display the full dataframe
-    datatable(df, options = list(pageLength = 10), rownames = FALSE)
+    # If we're in DE mode and the fold change column exists,
+    # rename it to reflect the current tissue pair.
+    if (current_gene_mode() == "de" && "log2FoldChange" %in% names(df)) {
+      if (order_val() == 0) {
+        names(df)[names(df) == "log2FoldChange"] <- paste("log2FC (", 
+                                                          input$tissue_select1, " up / ", 
+                                                          input$tissue_select2, " down)", sep = "")
+      } else {
+        names(df)[names(df) == "log2FoldChange"] <- paste("log2FC (", 
+                                                          input$tissue_select2, " up / ", 
+                                                          input$tissue_select1, " down)", sep = "")
+      }
+    }
+    
+    datatable(df,
+              selection = "multiple",
+              options = list(pageLength = 10),
+              rownames = FALSE)
   })
+  
+  
+  # Observer to delete selected rows from the gene cart.
+  observeEvent(input$delete_selected_genes, {
+    selectedRows <- input$cart_gene_table_rows_selected
+    if (!is.null(selectedRows) && length(selectedRows) > 0) {
+      currentCart <- cart_genes()
+      
+      # If the cart is stored as a data frame:
+      if (is.data.frame(currentCart)) {
+        if (length(selectedRows) == nrow(currentCart)) {
+          # Remove all rows; return an empty data frame with the same columns.
+          updatedCart <- currentCart[FALSE, , drop = FALSE]
+        } else {
+          updatedCart <- currentCart[-selectedRows, , drop = FALSE]
+        }
+      } else if (is.character(currentCart)) {
+        # If stored as a character vector:
+        if (length(selectedRows) == length(currentCart)) {
+          updatedCart <- character(0)
+        } else {
+          updatedCart <- currentCart[-selectedRows]
+        }
+      } else {
+        # Fall back to unchanged if the type is unexpected.
+        updatedCart <- currentCart
+      }
+      
+      cart_genes(updatedCart)
+      showNotification("Selected genes removed", type = "message")
+    } else {
+      showNotification("No genes selected", type = "warning")
+    }
+  })
+  
+  
   
   
   observeEvent(input$copy_cart_genes, {
@@ -4272,32 +4718,58 @@ server <- function(input, output, session) {
       return(merged_data)
       
     } else if (mode == "tissue") {
-      gene_expression_data_tissue <- gene_expression_data_tissue_reactive()
-      if (is.null(gene_expression_data_tissue) || nrow(gene_expression_data_tissue) == 0) return(NULL)
       
-      tau_scores <- calcTau_custom(gene_expression_data_tissue)
-      tau_values <- tau_scores$tau
-      names(tau_values) <- tau_scores$gene
+      # 1. Get the per‐tissue RPKM matrix
+      expr_mat <- gene_expression_data_tissue_reactive()
+      if (is.null(expr_mat) || nrow(expr_mat)==0) {
+        return(data.frame(Message="No tissue‐specific data available for these genes"))
+      }
       
-      mean_expression <- rowMeans(gene_expression_data_tissue, na.rm = TRUE)
-      result_df <- data.frame(
-        Gene = rownames(gene_expression_data_tissue),
-        Tau = tau_values[rownames(gene_expression_data_tissue)],
-        Mean_RPKM = mean_expression,
-        stringsAsFactors = FALSE
-      )
-      gene_df <- data.frame(Gene = genes, stringsAsFactors = FALSE)
-      result_df <- dplyr::left_join(gene_df, result_df, by = "Gene")
+      # 2. Compute Tau
+      tau_vals <- calcTau_custom(expr_mat)$tau
+      names(tau_vals) <- rownames(expr_mat)
+      
+      # 3. For each gene, pick the tissue with max expression
+      max_tissue <- apply(expr_mat, 1, function(x) {
+        colnames(expr_mat)[which.max(x)]
+      })
+      
+      # 4. Assemble into one wide data.frame
+      tissue_wide <- as.data.frame(expr_mat, stringsAsFactors=FALSE)
+      tissue_wide$Gene    <- rownames(tissue_wide)
+      tissue_wide$Tau     <- tau_vals[ tissue_wide$Gene ]
+      tissue_wide$Tissue  <- max_tissue[ tissue_wide$Gene ]
+      
+      # reorder columns: Gene | Tau | Tissue | <tissue1> | <tissue2> | ...
+      result_df <- tissue_wide %>%
+        dplyr::select(Gene, Tau, Tissue, dplyr::everything())
+      
+      # make sure you preserve the cart order (optional)
+      cart_df <- data.frame(Gene=genes, stringsAsFactors=FALSE)
+      result_df <- dplyr::left_join(cart_df, result_df, by="Gene")
+      
       return(result_df)
-      
-    } else if (mode == "ase") {
+    }
+    else if (mode == "ase") {
       ase_data <- gene_ase_df()
-      if (is.null(ase_data) || nrow(ase_data) == 0) return(NULL)
-      gene_df <- data.frame(Gene = genes, stringsAsFactors = FALSE)
+      if (is.null(ase_data) || nrow(ase_data) == 0) {
+        return(data.frame(Message = "No ASE data available"))
+      }
+      # Ensure ase_data has a 'score' column
+      if (!("score" %in% colnames(ase_data))) {
+        ase_data$score <- NA
+      }
+      gene_df <- data.frame(Gene = toupper(cart_genes()), stringsAsFactors = FALSE)
       result_df <- dplyr::left_join(gene_df, ase_data, by = "Gene")
+      
+      if (length(result_df$score) == 0) {
+        result_df$score <- rep(NA, nrow(result_df))
+      }
       result_df$ASE_Status <- ifelse(is.na(result_df$score), "Not ASE", "ASE")
       return(result_df)
     }
+    
+    
     
     return(NULL)
   }
@@ -4305,36 +4777,92 @@ server <- function(input, output, session) {
   # Adjusting the download_results handler
   output$download_results <- downloadHandler(
     filename = function() {
-      paste("gene_cart_results_", input$download_type, ".csv", sep = "")
+      paste0("gene_cart_results_", input$download_type, ".csv")
     },
     content = function(file) {
       mode_chosen <- input$download_type
       genes <- cart_genes()
+      
+      # If cart is empty
       if (length(genes) == 0) {
-        # No genes to export
         write.csv(data.frame(Message = "No genes in cart"), file, row.names = FALSE)
         return()
       }
       
-      # Retrieve data depending on the chosen mode
-      if (mode_chosen %in% c("de", "tissue", "ase")) {
-        data <- get_data_for_mode(mode_chosen, genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
+      if (mode_chosen == "de") {
+        # — Differential Expression export (unchanged) —
+        data <- get_data_for_mode("de", genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
         if (is.null(data)) {
-          write.csv(data.frame(Message = "No data available for this mode"), file, row.names = FALSE)
+          write.csv(data.frame(Message = "No DE data available"), file, row.names = FALSE)
+        } else {
+          # Rename log2FoldChange column
+          if ("log2FoldChange" %in% names(data)) {
+            if (order_val() == 0) {
+              names(data)[names(data) == "log2FoldChange"] <-
+                paste0("log2FC (", input$tissue_select1, " up / ", input$tissue_select2, " down)")
+            } else {
+              names(data)[names(data) == "log2FoldChange"] <-
+                paste0("log2FC (", input$tissue_select2, " up / ", input$tissue_select1, " down)")
+            }
+          }
+          write.csv(data, file, row.names = FALSE)
+        }
+        
+      } else if (mode_chosen == "tissue") {
+        # — Improved Tissue-Specific export —
+        # 1) Which tissues were selected in the heatmap?
+        tissues <- isolate(input$tissue_choice)
+        # 2) Pull the matching samples
+        samples <- phenodata %>%
+          filter(Tissue %in% tissues) %>%
+          pull(Sample_name)
+        # 3) Subset the RPKM matrix
+        expr <- RPKM_data[genes, samples, drop = FALSE]
+        # 4) Compute per-tissue averages
+        expr_by_tissue <- sapply(tissues, function(t) {
+          cols <- phenodata$Sample_name[phenodata$Tissue == t]
+          rowMeans(expr[, cols, drop = FALSE], na.rm = TRUE)
+        }, USE.NAMES = TRUE)
+        colnames(expr_by_tissue) <- tissues
+        # 5) Compute Tau
+        tau_df <- calcTau_custom(expr_by_tissue)
+        # 6) Build the output data.frame
+        df_out <- data.frame(
+          Gene   = rownames(expr_by_tissue),
+          Tau    = tau_df$tau,
+          Tissue = tissues[apply(expr_by_tissue, 1, which.max)],
+          expr_by_tissue,
+          stringsAsFactors = FALSE
+        )
+        # 7) Write CSV
+        write.csv(df_out, file, row.names = FALSE)
+        
+      } else if (mode_chosen == "ase") {
+        # — ASE export (unchanged) —
+        data <- get_data_for_mode("ase", genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
+        if (is.null(data)) {
+          write.csv(data.frame(Message = "No ASE data available"), file, row.names = FALSE)
         } else {
           write.csv(data, file, row.names = FALSE)
         }
+        
       } else if (mode_chosen == "combined") {
-        # Combine data from all modes by merging on Gene
-        de_data <- get_data_for_mode("de", genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
+        # — Combined export (unchanged) —
+        de_data     <- get_data_for_mode("de",     genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
         tissue_data <- get_data_for_mode("tissue", genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
-        ase_data <- get_data_for_mode("ase", genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
-        
+        ase_data    <- get_data_for_mode("ase",    genes, unfiltered_data, gene_expression_data_tissue_reactive, gene_ase_df, calcTau_custom)
         combined <- de_data
-        if (!is.null(tissue_data)) combined <- dplyr::full_join(combined, tissue_data, by = "Gene")
-        if (!is.null(ase_data)) combined <- dplyr::full_join(combined, ase_data, by = "Gene")
-        
-        if (is.null(combined)) combined <- data.frame(Message = "No data available for combined")
+        if (!is.null(tissue_data)) combined <- full_join(combined, tissue_data, by = "Gene")
+        if (!is.null(ase_data   )) combined <- full_join(combined, ase_data,    by = "Gene")
+        if ("log2FoldChange" %in% names(combined)) {
+          if (order_val() == 0) {
+            names(combined)[names(combined) == "log2FoldChange"] <-
+              paste0("log2FC (", input$tissue_select1, " up / ", input$tissue_select2, " down)")
+          } else {
+            names(combined)[names(combined) == "log2FoldChange"] <-
+              paste0("log2FC (", input$tissue_select2, " up / ", input$tissue_select1, " down)")
+          }
+        }
         write.csv(combined, file, row.names = FALSE)
       }
     }
@@ -4462,7 +4990,7 @@ server <- function(input, output, session) {
     if (length(genes) == 0) {
       # No genes in cart
       plot.new()
-      text(0.5, 0.5, "No genes in cart.", cex = 1)
+      text(0.5, 0.5, "No genes selected.", cex = 1)
       return(NULL)
     }
     
@@ -4547,83 +5075,99 @@ server <- function(input, output, session) {
     genes <- cart_genes()
     
     if (mode == "de") {
-      # DE Mode: Simplified Volcano Plot
       data <- unfiltered_data()
       if (is.null(data) || nrow(data) == 0) {
         plot.new()
-        text(0.5,0.5,"No DE Data", cex=1)
+        text(0.5, 0.5, "No DE Data", cex = 1)
         return()
       }
       if (!"Gene" %in% colnames(data)) {
         data <- tibble::rownames_to_column(data, var = "Gene")
       }
       
+      # Replace zero padj to avoid -Inf and calculate -log10(padj)
+      data$padj <- ifelse(data$padj == 0, 1e-300, data$padj)
       data$negLogP <- -log10(data$padj)
-      plot(data$log2FoldChange, data$negLogP, pch=19, cex=0.5,
-           xlab="log2FC", ylab="-log10 P", main="Volcano",
-           cex.main=0.9, cex.lab=0.8, cex.axis=0.8)
       
-      highlighted <- data[data$Gene %in% genes,]
-      if (nrow(highlighted) > 0) {
-        points(highlighted$log2FoldChange, highlighted$negLogP, pch=19, col="red")
-        text(highlighted$log2FoldChange, highlighted$negLogP, labels=highlighted$Gene,
-             pos=3, cex=0.7, col="red")
+      # Build comparison label based on order
+      comp_label <- if (order_val() == 0) {
+        paste(input$tissue_select1, "vs", input$tissue_select2)
+      } else {
+        paste(input$tissue_select2, "vs", input$tissue_select1)
       }
       
-      # Add clarifying labels if tissues are known
+      # Plot the volcano plot with base R plotting:
+      plot(data$log2FoldChange, data$negLogP, pch = 19, cex = 0.5,
+           xlab = paste0("log2FC (", comp_label, ")"),
+           ylab = "-log10 P", main = "Volcano Plot",
+           cex.main = 1, cex.lab = 0.9, cex.axis = 0.9)
+      
+      # Highlight genes that are in the gene cart
+      if (!is.null(genes) && length(genes) > 0) {
+        # If the cart is a data frame with a "Source Comparison" column, filter by the current comparison.
+        if (is.data.frame(genes) && "Source Comparison" %in% names(genes)) {
+          current_genes <- genes$Gene[genes$`Source Comparison` == comp_label]
+        } else {
+          current_genes <- genes
+        }
+        
+        highlighted <- data[data$Gene %in% current_genes, ]
+        if (nrow(highlighted) > 0) {
+          # Simply replot the highlighted points at the same coordinates in red.
+          points(highlighted$log2FoldChange, highlighted$negLogP, pch = 19, col = "red")
+          # Optionally, add text labels at the exact coordinates.
+          text(highlighted$log2FoldChange, highlighted$negLogP, labels = highlighted$Gene,
+               pos = 3, cex = 0.7, col = "red")
+        }
+      }
+      
+      # Add tissue labels to indicate upregulation direction.
       if (!is.null(input$tissue_select1) && !is.null(input$tissue_select2)) {
-        # Positive log2FC: Up in tissue_select1, Negative log2FC: Up in tissue_select2
-        x_range <- range(data$log2FoldChange, na.rm=TRUE)
-        y_range <- range(data$negLogP, na.rm=TRUE)
-        
-        # Place tissue labels near the top of the plot
-        # Left side (negative log2FC) means up in tissue_select2
-        text(x = x_range[1], y = y_range[2]*0.8, 
-             labels = paste("Up in", input$tissue_select2), 
-             pos = 4, cex = 0.8, col = "blue")
-        
-        # Right side (positive log2FC) means up in tissue_select1
-        text(x = x_range[2], y = y_range[2]*0.8, 
-             labels = paste("Up in", input$tissue_select1), 
-             pos = 2, cex = 0.8, col = "blue")
+        x_range <- range(data$log2FoldChange, na.rm = TRUE)
+        y_range <- range(data$negLogP, na.rm = TRUE)
+        # Left side: negative values indicate upregulation in tissue_select2.
+        text(x = x_range[1], y = y_range[2] * 0.8, 
+             labels = paste("Up in", input$tissue_select2), pos = 4, cex = 0.8, col = "blue")
+        # Right side: positive values indicate upregulation in tissue_select1.
+        text(x = x_range[2], y = y_range[2] * 0.8, 
+             labels = paste("Up in", input$tissue_select1), pos = 2, cex = 0.8, col = "blue")
       }
       
     } else if (mode == "tissue") {
-      # Tissue Mode: Bar plot of Mean_RPKM
+      # Tissue mode code remains unchanged.
       table_data <- mode_based_gene_table()
-      if ("Mean_RPKM" %in% colnames(table_data) && !all(is.na(table_data$Mean_RPKM))) {
-        table_data <- table_data[order(table_data$Mean_RPKM, decreasing=TRUE),]
-        par(mar=c(7,4,2,1)) # more space for axis labels
-        barplot(table_data$Mean_RPKM, names.arg=table_data$Gene, las=2, cex.names=0.7,
-                main="Avg Expression", ylab="Mean RPKM", cex.main=0.9, cex.lab=0.8, cex.axis=0.8)
+      if ("Mean_RPKM" %in% names(table_data) && !all(is.na(table_data$Mean_RPKM))) {
+        table_data <- table_data[order(table_data$Mean_RPKM, decreasing = TRUE), ]
+        par(mar = c(7, 4, 2, 1))
+        barplot(table_data$Mean_RPKM, names.arg = table_data$Gene, las = 2, cex.names = 0.7,
+                main = "Avg Expression", ylab = "Mean RPKM", cex.main = 0.9, cex.lab = 0.8, cex.axis = 0.8)
       } else {
         plot.new()
-        text(0.5,0.5,"No Tissue Data", cex=1)
+        text(0.5, 0.5, "No Tissue Data", cex = 1)
       }
       
     } else if (mode == "ase") {
-      # ASE Mode: Boxplot of ASE Scores
       table_data <- mode_based_gene_table()
-      if ("score" %in% colnames(table_data)) {
-        ase_genes <- table_data[table_data$ASE_Status == "ASE" & !is.na(table_data$score),]
-        not_ase_genes <- table_data[table_data$ASE_Status == "Not ASE",]
-        
+      if ("score" %in% names(table_data)) {
+        ase_genes <- table_data[table_data$ASE_Status == "ASE" & !is.na(table_data$score), ]
+        not_ase_genes <- table_data[table_data$ASE_Status == "Not ASE", ]
         if (nrow(ase_genes) > 0) {
-          boxplot(ase_genes$score, main="ASE Scores", ylab="score",
-                  cex.main=0.9, cex.lab=0.8, cex.axis=0.8)
-          mtext(paste("ASE:", nrow(ase_genes), "Not ASE:", nrow(not_ase_genes)), side=3, cex=0.8)
+          boxplot(ase_genes$score, main = "ASE Scores", ylab = "score",
+                  cex.main = 0.9, cex.lab = 0.8, cex.axis = 0.8)
+          mtext(paste("ASE:", nrow(ase_genes), "Not ASE:", nrow(not_ase_genes)),
+                side = 3, cex = 0.8)
         } else {
           plot.new()
-          text(0.5,0.5,"No ASE Genes", cex=1)
+          text(0.5, 0.5, "No ASE Genes", cex = 1)
         }
       } else {
         plot.new()
-        text(0.5,0.5,"No ASE Data", cex=1)
+        text(0.5, 0.5, "No ASE Data", cex = 1)
       }
       
     } else {
       plot.new()
-      text(0.5,0.5,"Select a mode or add genes", cex=1)
+      text(0.5, 0.5, "Select a mode or add genes", cex = 1)
     }
   })
   
