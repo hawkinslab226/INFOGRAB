@@ -16,7 +16,7 @@ required_packages <- c(
   "shinycssloaders", "shinyWidgets", "htmltools", "tools", 
   "htmlwidgets", "DESeq2", "ggplotify", "grid", "graphics", 
   "igraph", "seriation", "GGally", "knitr", "devtools", "stringr",
-  "BiocManager", "VariantAnnotation", "bslib", "ggdist", "ggiraph"
+  "BiocManager", "VariantAnnotation", "bslib", "ggdist", "ggiraph", "svglite"
 )
 
 install_if_missing <- function(pkg) {
@@ -104,6 +104,7 @@ library(Rsamtools)
 library(preprocessCore)
 library(ggdist)
 library(ggiraph)
+library(svglite)
 
 
 # load required package
@@ -471,7 +472,8 @@ ui <- navbarPage(
                             actionButton("confirm_cor_plot", "Confirm Plot")
                           ),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_correlation_plot", "Download PNG"),
+                          downloadButton("download_correlation_pdf", "Download PNG"),
+                          downloadButton("download_correlation_svg", "Download SVG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("This section allows you to visualize the correlation between the expression 
                                  levels of selected genes across different tissues or systems. Correlation plots are useful 
@@ -522,7 +524,8 @@ ui <- navbarPage(
                           actionButton("add_labeled_genes", "Grab Labeled Genes"),
                           
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_volcano_plot", "Download PNG"),
+                          downloadButton("download_volcano_pdf", "Download PNG"),
+                          downloadButton("download_volcano_svg", "Download SVG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("Each point represents a gene, plotted by its log2 fold change and the negative 
                           logarithm of its adjusted p-value. Genes with significant changes (high fold change 
@@ -566,7 +569,8 @@ ui <- navbarPage(
                                                   "Cividis" = "cividis",
                                                   "Inferno" = "inferno")),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_heatmap_plot", "Download PNG"),
+                          downloadButton("download_heatmap_pdf", "Download PNG"),
+                          downloadButton("download_heatmap_svg", "Download SVG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("Each cell represents the expression level of a gene in a sample, with colors indicating the level of expression."),
                           tags$p(
@@ -598,7 +602,8 @@ ui <- navbarPage(
                             selectInput("pca_system_select", "Select System:", choices = unique(phenodata$System))
                           ),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_pca_plot", "Download PNG"),
+                          downloadButton("download_pca_pdf", "Download PNG"),
+                          downloadButton("download_pca_svg", "Download SVG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("This section allows you to perform Principal Component Analysis (PCA) on your data. 
                                  PCA is a dimensionality reduction technique that projects high-dimensional data into a lower-dimensional space, 
@@ -635,29 +640,44 @@ ui <- navbarPage(
            )
   ),
   
-  tabPanel("Expression Profiles", value = "tissue_tab",
-           sidebarLayout(
-             sidebarPanel(
-               textInput("barplot_searched_gene", "Search for genes (comma-separated)", width = '600px', value = "", placeholder = "Search for genes here"),
-               actionButton("search_gene_barplot", "Search"),
-               actionButton("random_gene_barplot", "Search 5 Random Genes"),
-               actionButton("clear_search_gene_barplot", "Clear"),
-               actionButton("add_to_cart_barplot", "Grab Genes"),
-               actionButton("transfer_to_heatmap", "Show Heatmap of Searched Genes"),
-               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-               downloadButton("download_barplot", "Download PNG"),
-               tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-               tags$p("This section provides a barplot of the average expression levels of selected genes across 
-                      different tissues. This visualization is helpful for comparing how genes are expressed in different tissue types."),
-               tags$p("You can search for specific genes and display their average expression 
-                      levels across the selected tissues. The plot allows for a quick comparison of gene expression patterns and identification of tissue-specific expression.")
-             ),
-             mainPanel(
-               uiOutput("dynamic_title"),
-               uiOutput("dynamic_barplot_output")
-             )
-           )
-  ),
+  ## in ui.R (or the UI section of your app)
+  
+  tabPanel(
+    "Expression Profiles", value = "tissue_tab",
+    sidebarLayout(
+      sidebarPanel(
+        textInput(
+          "barplot_searched_gene",
+          "Search for genes (comma-separated)",
+          width = '600px',
+          value = "",
+          placeholder = "Search for genes here"
+        ),
+        actionButton("search_gene_barplot", "Search"),
+        actionButton("random_gene_barplot", "Search 5 Random Genes"),
+        actionButton("clear_search_gene_barplot", "Clear"),
+        actionButton("add_to_cart_barplot", "Grab Genes"),
+        actionButton("transfer_to_heatmap", "Show Heatmap of Searched Genes"),
+        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+        downloadButton("download_barplot_pdf", "Download PNG"),
+        downloadButton("download_barplot_svg", "Download SVG"),
+        tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
+        tags$p(
+          "This section provides a barplot of the average expression levels of selected genes across
+         different tissues. This visualization is helpful for comparing how genes are expressed in different tissue types."
+        ),
+        tags$p(
+          "You can search for specific genes and display their average expression
+         levels across the selected tissues. The plot allows for a quick comparison of gene expression patterns and identification of tissue-specific expression."
+        )
+      ),
+      mainPanel(
+        uiOutput("dynamic_title"),
+        uiOutput("dynamic_barplot_output")
+      )
+    )
+  )
+  ,
   
   tabPanel("Tissue-Specific Analysis", value = "tissue_tab",
            
@@ -686,7 +706,8 @@ ui <- navbarPage(
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           actionButton("add_to_cart_tissue_specific_heatmap", "Grab Displayed Genes"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
-                          downloadButton("download_tissue_specific_heatmap", "Download PNG"),
+                          downloadButton("download_tissue_specific_heatmap_pdf", "Download PNG"),
+                          downloadButton("download_tissue_specific_heatmap_svg", "Download SVG"),
                           tags$hr(style = "height:1px; border:none; color:#300; background-color:#300;"),
                           tags$p("This section displays a tissue-specific heatmap, which focuses on the expression of genes that are most tissue specific across the selected tissues."),
                           tags$p("The heatmap is color-coded to represent different levels of gene expression, allowing you to easily identify patterns and differences in gene expression between tissues. This is particularly useful for identifying tissue-specific genes and understanding how gene expression varies across different biological systems.")
@@ -716,7 +737,7 @@ ui <- navbarPage(
         shiny::radioButtons(
           inputId  = "raincloud_data_type",
           label    = "Data Type:",
-          choices  = c("SNP ASE" = "snp", "Gene ASE" = "gene"),
+          choices  = c("SNP ASE" = "snp"),
           selected = "snp"
         ),
         
@@ -2199,16 +2220,27 @@ server <- function(input, output, session) {
     print(p)
   })
   
-  output$download_volcano_plot <- downloadHandler(
-    filename = function() { paste('volcano.png') },
-    content = function(file) {
-      data <- unfiltered_data()
-      req(data)
-      
-      p <- generate_volcano_plot(data)
-      ggsave(file, plot = p, width = 20, height = 13, units = "in", dpi = 300, bg = "white")
+  output$download_volcano_pdf <- downloadHandler(
+    filename = function() paste0("volcano.pdf"),
+    content  = function(file) {
+      p <- generate_volcano_plot(unfiltered_data())
+      ggsave(file, plot = p,
+             device   = cairo_pdf,
+             width    = 20, height = 13, units = "in",
+             bg       = "white")
     }
   )
+  output$download_volcano_svg <- downloadHandler(
+    filename    = function() "volcano.svg",
+    contentType = "image/svg+xml",
+    content     = function(file) {
+      svglite::svglite(file, width = 20, height = 13)
+      print(generate_volcano_plot(unfiltered_data()))
+      dev.off()
+    }
+  )
+  
+  
   
   observeEvent(input$add_de_genes_tissue1, {
     data <- unfiltered_data() 
@@ -2566,7 +2598,7 @@ server <- function(input, output, session) {
   
   
   
-  output$download_heatmap_plot <- downloadHandler(
+  output$download_heatmap_pdf <- downloadHandler(
     filename = function() {paste('heatmap.png')},
     content = function(file) {
       data <- filtered_data_combined()
@@ -2574,6 +2606,16 @@ server <- function(input, output, session) {
       
       png(file, width = 18, height = 13, units = "in", res = 300)
       generate_plot(data, search_genes_heatmap())
+      dev.off()
+    }
+  )
+  
+  output$download_heatmap_svg <- downloadHandler(
+    filename    = function() "heatmap.svg",
+    contentType = "image/svg+xml",
+    content     = function(file) {
+      svglite::svglite(file, width = 18, height = 13)
+      generate_plot(filtered_data_combined(), search_genes_heatmap())
       dev.off()
     }
   )
@@ -2772,7 +2814,7 @@ server <- function(input, output, session) {
   
   
   
-  output$download_correlation_plot <- downloadHandler(
+  output$download_correlation_pdf <- downloadHandler(
     filename = function() {
       paste("Correlation", ".png", sep = "")
     },
@@ -2781,7 +2823,16 @@ server <- function(input, output, session) {
     }
   )
   
-  
+  output$download_correlation_svg <- downloadHandler(
+    filename    = function() "correlation.svg",
+    contentType = "image/svg+xml",
+    content     = function(file) {
+      svglite::svglite(file, width = 14, height = 10)
+      p <- if (input$correlation_mode == "system") system_corr_plot() else generate_correlation_plot()
+      print(p)
+      dev.off()
+    }
+  )
   
   ### PCA
   
@@ -2864,7 +2915,7 @@ server <- function(input, output, session) {
       
       print(ggplot_pca)
       
-      output$download_pca_plot <- downloadHandler(
+      output$download_pca_pdf <- downloadHandler(
         filename = function() {
           paste("PCA", ".png", sep = "")
         },
@@ -2872,190 +2923,169 @@ server <- function(input, output, session) {
           ggsave(file, plot = ggplot_pca, device = "png", width = 10, height = 8, bg = "white")
         }
       )
+      
+      output$download_pca_svg <- downloadHandler(
+        filename    = function() "PCA.svg",
+        contentType = "image/svg+xml",
+        content     = function(file) {
+          svglite::svglite(file, width = 10, height = 8)
+          # regenerate PCA
+          selected_samples <- switch(input$pca_mode,
+                                     selected = phenodata$Sample_name[phenodata$Sample_name2 %in% c(input$tissue_select1, input$tissue_select2)],
+                                     system   = phenodata$Sample_name[phenodata$System == input$pca_system_select],
+                                     all      = phenodata$Sample_name
+          )
+          topN <- names(sort(apply(RPKM_data, 1, var), decreasing = TRUE)[1:1000])
+          dat <- RPKM_data[topN, selected_samples, drop = FALSE]
+          df  <- prcomp(t(dat), scale. = FALSE)$x %>% as.data.frame() %>% 
+            tibble::rownames_to_column("Sample") %>% 
+            merge(phenodata, by.x = "Sample", by.y = "Sample_name2")
+          p <- ggplot(df, aes(PC1, PC2, color = Tissue, shape = System)) +
+            geom_point(size = 4) +
+            theme_minimal() +
+            theme(text = element_text())
+          print(p)
+          dev.off()
+        }
+      )
+      
     })
   })
   
   ### Gene Expression
   
+  # allow very large raster plots
   options(ragg.max_dim = 10000000)
   
-  barplot_data <- reactiveVal(NULL)
-  current_plot <- reactiveVal(NULL)
+  # reactive storage
+  barplot_data        <- reactiveVal(NULL)  # average per Gene×Tissue
+  barplot_melted      <- reactiveVal(NULL)  # per-sample points
+  current_plot        <- reactiveVal(NULL)  # last ggplot object
+  current_title       <- reactiveVal("")    # title text
   
-  # Add a reactive value to keep track of the current title
-  current_title <- reactiveVal("")
-  
-  common_genes <- function(tissue1, tissue2, RPKM_data, phenodata) {
-    # Filter phenotype data to get the samples belonging to the selected tissues
-    tissue1_samples <- phenodata %>%
-      filter(Tissue == tissue1) %>%
-      pull(Sample_name)
-    
-    tissue2_samples <- phenodata %>%
-      filter(Tissue == tissue2) %>%
-      pull(Sample_name)
-    
-    # Select the columns in RPKM_data that match the filtered sample names
-    selected_samples <- RPKM_data %>%
-      dplyr::select(all_of(c(tissue1_samples, tissue2_samples)))
-    
-    # Calculate the average expression across the selected tissues for each gene
-    top_genes <- selected_samples %>%
-      rowMeans(na.rm = TRUE) %>%
-      sort(decreasing = TRUE) %>%
-      head(5) %>%
-      names()
-    
-    return(top_genes)
-  }
-  
-  observeEvent(input$differential_analysis_tab, {
-    
-    if (input$differential_analysis_tab == "Gene Expression") {
-      req(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
-      
-      top_genes <- common_genes(input$tissue_select1, input$tissue_select2, RPKM_data, phenodata)
-      
-      if (length(top_genes) > 0) {
-        updateTextInput(session, "barplot_searched_gene", value = paste(top_genes, collapse = ", "))
-        
-        if (!is.null(top_genes) && length(top_genes) > 0) {
-          updateBarplotData(top_genes)
-        }
-        
-        current_title(paste("Showing Top 5 Commonly Expressed Genes in", input$tissue_select1, "and", input$tissue_select2))
-      } else {
-        showNotification("No common genes found between selected tissues.", type = "error")
-      }
-    }
-  })
-  
-  
-  
-  
-  observeEvent(input$search_gene_barplot, {
-    req(input$barplot_searched_gene)
-    
-    searched_genes <- strsplit(input$barplot_searched_gene, ",\\s*")[[1]]
-    searched_genes <- toupper(searched_genes)
-    
-    found_genes <- intersect(toupper(rownames(RPKM_data)), searched_genes)
-    
-    if (length(found_genes) == 0) {
-      showNotification("No genes found.", type = "warning")
-      barplot_data(NULL)
-      current_plot(NULL)
-      return(NULL)
-    }
-    
-    updateBarplotData(found_genes)
-    
-    # Update the title
-    current_title("Showing Searched Genes")
-  })
-  
-  observeEvent(input$random_gene_barplot, {
-    random_genes <- sample(rownames(RPKM_data), 5)
-    updateTextInput(session, "barplot_searched_gene", value = paste(random_genes, collapse = ", "))
-    updateBarplotData(random_genes)
-    
-    # Update the title
-    current_title("Showing searched genes")
-  })
-  
-  observeEvent(input$clear_search_gene_barplot, {
-    updateTextInput(session, "barplot_searched_gene", value = "")
-    barplot_data(NULL)
-    current_plot(NULL)
-  })
-  
-  output$dynamic_title <- renderUI({
-    h2(current_title(), style = "text-align: center; margin-top: 20px;")
-  })
-  
-  
+  # update function: sets both barplot_data() and barplot_melted(), UI + renderPlot
   updateBarplotData <- function(genes) {
-    if (is.null(genes) || length(genes) == 0) {
-      showNotification("No valid genes to plot.", type = "error")
-      output$dynamic_barplot_output <- renderUI({
-        h4("No data available for the selected genes and tissues.", style = "text-align: center; color: red;")
-      })
-      return(NULL)
-    }
+    # subset RPKM_data (rows=genes, cols=samples)
+    df <- RPKM_data[genes, , drop = FALSE] %>%
+      as.data.frame() %>%
+      rownames_to_column("Gene") %>%
+      melt(id.vars = "Gene", variable.name = "Sample", value.name = "Expression") %>%
+      left_join(phenodata, by = c("Sample" = "Sample_name"))
     
-    selected_data <- RPKM_data[genes, , drop = FALSE]
-    
-    if (nrow(selected_data) == 0 || ncol(selected_data) == 0) {
-      showNotification("No valid data available for the selected genes and tissues.", type = "error")
-      output$dynamic_barplot_output <- renderUI({
-        h4("No data available for the selected genes and tissues.", style = "text-align: center; color: red;")
-      })
-      return(NULL)
-    }
-    
-    selected_data$Gene <- rownames(selected_data)
-    melted_data <- reshape2::melt(selected_data)
-    tissue_info <- phenodata[match(melted_data$variable, phenodata$Sample_name), "Tissue"]
-    melted_data$Tissue <- tissue_info
-    
-    if (nrow(melted_data) == 0 || all(is.na(melted_data$Tissue))) {
-      showNotification("No valid data available for the selected genes and tissues.", type = "error")
-      output$dynamic_barplot_output <- renderUI({
-        h4("No data available for the selected genes and tissues.", style = "text-align: center; color: red;")
-      })
-      return(NULL)
-    }
-    
-    average_expression_per_tissue <- melted_data %>%
+    # average by Gene × Tissue
+    avgdf <- df %>%
       group_by(Gene, Tissue) %>%
-      summarize(average_value = mean(value, na.rm = TRUE), .groups = 'drop') %>%
-      ungroup()
+      summarize(avgExp = mean(Expression, na.rm = TRUE), .groups = "drop")
     
-    barplot_data(average_expression_per_tissue)
+    # store
+    barplot_data(avgdf)
+    barplot_melted(df)
     
+    # dynamic height
     output$dynamic_barplot_output <- renderUI({
-      plot_height <- 300 + 300 * length(genes)
-      plotOutput("barplot_plot", height = paste0(plot_height, "px"))
+      h <- 300 + 80 * length(genes)
+      plotOutput("barplot_plot", height = paste0(h, "px"))
     })
     
+    # actual plotting
     output$barplot_plot <- renderPlot({
-      p <- ggplot(average_expression_per_tissue, aes(x = Tissue, y = average_value, fill = Tissue)) +
-        geom_bar(stat = "identity", color = "black", width = 0.8) +
-        facet_wrap(~ Gene, scales = "free", ncol = 1) +
-        theme_minimal() +
-        ggplot2::theme(
-          axis.text.y = element_text(size = 18),
-          axis.title.y = element_text(size = 24),
-          axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-          panel.spacing = unit(0.5, "lines"),
-          panel.border = element_rect(color = "black", fill = NA, size = 0.5),
-          strip.background = element_blank(),
-          strip.placement = "outside",
-          panel.background = element_blank(),
-          strip.text = element_text(size = 14, face = "bold"),
-          legend.position = "none"
+      req(barplot_data(), barplot_melted())
+      avgdf <- barplot_data()
+      pts   <- barplot_melted()
+      
+      p <- ggplot() +
+        # bars = average
+        geom_col(
+          data = avgdf,
+          aes(x = Tissue, y = avgExp, fill = Tissue),
+          position = position_dodge(width = 0.8),
+          width = 0.7, color = "black"
         ) +
+        # overlay replicate points
+        geom_jitter(
+          data = pts,
+          aes(x = Tissue, y = Expression, color = Tissue),
+          width = 0.15, height = 0,
+          size = 2
+        ) +
+        facet_wrap(~ Gene, scales = "free_y", ncol = 1) +
         scale_fill_manual(values = mycolors1) +
-        labs(y = "Average Expression (Avg. RPKM)", x = "Tissue")
+        scale_color_manual(values = mycolors1) +
+        theme_minimal(base_size = 16) +
+        theme(
+          axis.text.x     = element_text(angle = 45, hjust = 1),
+          legend.position = "none",
+          panel.spacing   = unit(0.5, "lines")
+        ) +
+        labs(
+          x     = NULL,
+          y     = "Expression (RPKM)",
+          title = current_title()
+        )
       
       current_plot(p)
       print(p)
     })
   }
   
-  output$download_barplot <- downloadHandler(
-    filename = function() {
-      paste("Barplot", ".png", sep = "")
-    },
-    content = function(file) {
-      ggsave(file, plot = current_plot(), device = "png", width = 10, height = length(barplot_data()) * 4, bg = "white")
+  # when the user clicks “Search”
+  observeEvent(input$search_gene_barplot, {
+    req(input$barplot_searched_gene)
+    genes <- toupper(strsplit(input$barplot_searched_gene, ",\\s*")[[1]])
+    found <- intersect(genes, toupper(rownames(RPKM_data)))
+    if (length(found) == 0) {
+      showNotification("No genes found.", type = "warning")
+      barplot_data(NULL); barplot_melted(NULL); current_plot(NULL)
+    } else {
+      updateTextInput(session, "barplot_searched_gene", value = paste(found, collapse = ", "))
+      current_title("Showing Searched Genes")
+      updateBarplotData(found)
+    }
+  })
+  
+  # “Random 5” button
+  observeEvent(input$random_gene_barplot, {
+    genes <- sample(rownames(RPKM_data), 5)
+    updateTextInput(session, "barplot_searched_gene", value = paste(genes, collapse = ", "))
+    current_title("Showing 5 Random Genes")
+    updateBarplotData(genes)
+  })
+  
+  # “Clear” button
+  observeEvent(input$clear_search_gene_barplot, {
+    updateTextInput(session, "barplot_searched_gene", value = "")
+    barplot_data(NULL); barplot_melted(NULL); current_plot(NULL)
+    output$dynamic_barplot_output <- renderUI({
+      h4("No genes selected.", style = "color:gray; text-align:center;")
+    })
+  })
+  
+  # dynamic title
+  output$dynamic_title <- renderUI({
+    h2(current_title(), style = "text-align: center; margin-top: 20px;")
+  })
+  
+  # download handlers
+  output$download_barplot_pdf <- downloadHandler(
+    filename = function() "expression_barplot.png",
+    content  = function(file) {
+      ggsave(file, plot = current_plot(), device = "png", width = 10, height = 6)
+    }
+  )
+  output$download_barplot_svg <- downloadHandler(
+    filename    = function() "expression_barplot.svg",
+    contentType = "image/svg+xml",
+    content     = function(file) {
+      svglite::svglite(file, width = 10, height = 6)
+      print(current_plot())
+      dev.off()
     }
   )
   
+  # “Grab Genes” in cart
   observeEvent(input$add_to_cart_barplot, {
     genes <- unique(barplot_data()$Gene)
     request_add_genes(genes)
-    
     showNotification("Genes grabbed.", type = "message")
   })
   
@@ -3137,7 +3167,8 @@ server <- function(input, output, session) {
                                 "Cividis" = "cividis",
                                 "Inferno" = "inferno")),
         br(),
-        downloadButton("download_modal_heatmap", "Download Heatmap"),
+        downloadButton("download_modal_heatmap_pdf", "Download Heatmap PDF"),
+        downloadButton("download_modal_heatmap_svg", "Download Heatmap SVG"),
         easyClose = TRUE,
         footer = modalButton("Close"),
         tags$style(".modal-dialog { width: 90%; }")
@@ -3183,7 +3214,7 @@ server <- function(input, output, session) {
     })
     
     # Add the download handler for the heatmap
-    output$download_modal_heatmap <- downloadHandler(
+    output$download_modal_heatmap_pdf <- downloadHandler(
       filename = function() {
         paste("heatmap", ".png", sep = "")
       },
@@ -3211,6 +3242,30 @@ server <- function(input, output, session) {
       }
     )
   })
+  
+  output$download_modal_heatmap_svg <- downloadHandler(
+    filename    = function() "modal_heatmap.svg",
+    contentType = "image/svg+xml",
+    content     = function(file) {
+      svglite::svglite(file, width = 15, height = 10)
+      pheatmap(
+        rpkm_filtered,        
+        scale       = "row",
+        cluster_rows= TRUE,
+        cluster_cols= FALSE,
+        show_rownames = TRUE,
+        annotation_col= annotation,
+        annotation_colors = annotation_colors,
+        color       = color_scale_reactive(),
+        legend_labels = c("low","medium","high"),
+        fontsize    = 10,
+        angle_col   = 45,
+        cellwidth   = 17,
+        cellheight  = cell_height
+      )
+      dev.off()
+    }
+  )
   
   
   ##########################
@@ -3429,12 +3484,22 @@ server <- function(input, output, session) {
   
   
   
-  output$download_tissue_specific_heatmap <- downloadHandler(
+  output$download_tissue_specific_heatmap_pdf <- downloadHandler(
     filename = function() {
       paste("Tissue_specific_heatmap", ".png", sep = "")
     },
     content = function(file) {
       ggsave(file, plot = current_plot(), device = "png", width = 10, height = 11, bg = "white")
+    }
+  )
+  
+  output$download_tissue_specific_heatmap_svg <- downloadHandler(
+    filename    = function() "tissue_specific_heatmap.svg",
+    contentType = "image/svg+xml",
+    content     = function(file) {
+      svglite::svglite(file, width = 10, height = 11)
+      print(current_plot())
+      dev.off()
     }
   )
   
@@ -3456,163 +3521,113 @@ server <- function(input, output, session) {
   
   # 1) Load ASE data --------------------------------------------------------
   
-  # SNP ASE
-  # 2) Load SNP ASE data
+  ## ─── SERVER ─────────────────────────────────────────────────────────────────────
+  
+  # 1) Load SNP ASE data --------------------------------------------------------
   snp_ase_path <- "data/all.snpAse_0906.txt"
   snp_ase_df   <- shiny::reactiveVal(data.frame())
+  
   shiny::observe({
     req(file.exists(snp_ase_path))
     withProgress(message = "Loading SNP ASE...", value = 0, {
       df <- read.delim(snp_ase_path, stringsAsFactors = FALSE)
       if (!"AE" %in% colnames(df)) {
-        df <- df %>% mutate(
-          Rratio = REF_COUNT/(REF_COUNT+ALT_COUNT),
+        df <- dplyr::mutate(
+          df,
+          Rratio = REF_COUNT / (REF_COUNT + ALT_COUNT),
           AE     = abs(0.5 - Rratio)
         )
       }
+      df$Tissue <- stringr::str_replace_all(df$Tissue, repl)
       
-      # Recode here
-      df$Tissue <- str_replace_all(df$Tissue, repl)
-      
-      if (!"Tissue" %in% colnames(df)) stop("Missing Tissue column")
+      if (!"Tissue" %in% colnames(df)) stop("Missing Tissue column in SNP ASE data")
       snp_ase_df(df)
       
-      updateSelectInput(session, "tissue_select_raincloud",
-                        choices  = c("All Tissues", sort(unique(df$Tissue))),
-                        selected = "All Tissues"
+      shiny::updateSelectInput(
+        session, "tissue_select_raincloud",
+        choices  = c("All Tissues", sort(unique(df$Tissue))),
+        selected = "All Tissues"
       )
-      
       incProgress(1)
     })
   })
   
+  # 2) Helpers for clearing & random SNP selection -----------------------------
+  selected_snps <- shiny::reactiveVal(NULL)
   
-  # 2) Search / random helpers -----------------------------------------------
-  
-  ## 3) Helpers for clearing & random selection ####
-  selected_genes <- shiny::reactiveVal(NULL)
-  selected_snps  <- shiny::reactiveVal(NULL)
-  
-  # clear both gene & SNP selections
-  # in your server, replace the existing clear_search_raincloud observer
-  # with this one (or just add the two extra lines):
-  
-  # in server.R, after you’ve declared selected_genes/selected_snps:
   shiny::observeEvent(input$clear_search_raincloud, {
-    # 1) Clear out whatever was typed in the gene & SNP boxes:
-    shiny::updateTextInput(session,
-                           inputId = "raincloud_searched_gene",
-                           value   = "")
-    shiny::updateTextInput(session,
-                           inputId = "raincloud_searched_snp",
-                           value   = "")
-    
-    # 2) Reset the tissue picker back to ALL:
-    #    (must match exactly the “All Tissues” choice in your selectInput)
-    shiny::updateSelectInput(session,
-                             inputId  = "tissue_select_raincloud",
-                             selected = "All Tissues")
-    
-    # 3) Clear any internal reactiveVals just in case you’re also
-    #    using those to drive logic (won’t hurt to reset them):
-    selected_genes(NULL)
+    shiny::updateTextInput(session, "raincloud_searched_snp", value = "")
+    shiny::updateSelectInput(session, "tissue_select_raincloud", selected = "All Tissues")
     selected_snps(NULL)
   })
   
-  # random genes
-  # random genes
-  shiny::observeEvent(input$random_genes_raincloud, {
-    df <- gene_ase_df()
-    if (nrow(df) >= input$top_n_raincloud) {
-      genes <- sample(unique(df$Gene), size = input$top_n_raincloud)
-      selected_genes(genes)
-      shiny::updateTextInput(
-        session,
-        inputId = "raincloud_searched_gene",
-        value   = paste(genes, collapse = ",")
-      )
-    }
-  })
-  
-  # random SNPs
   shiny::observeEvent(input$random_snps_raincloud, {
     df <- snp_ase_df()
     if (nrow(df) >= input$top_n_raincloud) {
       ids <- sample(unique(df$ID), size = input$top_n_raincloud)
       selected_snps(ids)
-      shiny::updateTextInput(
-        session,
-        inputId = "raincloud_searched_snp",
-        value   = paste(ids, collapse = ",")
-      )
+      shiny::updateTextInput(session, "raincloud_searched_snp", value = paste(ids, collapse = ","))
     }
   })
   
-  ## ——— 1) Load Gene ASE data ——————————————————————————————————————
-  # — 1) Load Gene ASE data, coerce score unambiguously —
-  gene_ase_path <- "data/all.geneAse.info827.txt"
-  gene_ase_df   <- shiny::reactiveVal(data.frame())
-  shiny::observe({
-    if (!file.exists(gene_ase_path)) return()
-    withProgress(message = "Loading Gene ASE...", value = 0, {
-      df <- read.delim(gene_ase_path, stringsAsFactors = FALSE)
-      df$mean.s <- as.numeric(df$mean.s)
-      df <- df[, c("Gene","n.vars","mean.s","fdr","Tissue")]
-      
-      # Recode here
-      df$Tissue <- str_replace_all(df$Tissue, repl)
-      
-      gene_ase_df(df)
-      updateSelectInput(session, "tissue_select_raincloud",
-                        choices  = c("All Tissues", sort(unique(df$Tissue))),
-                        selected = "All Tissues"
-      )
-      incProgress(1)
-    })
+  # 3) Reactive dataset with tissue / search / top-N filtering ------------------
+  filtered_data_raincloud <- shiny::reactive({
+    df <- snp_ase_df() %>%
+      dplyr::filter(FDR <= input$pval_cutoff)
+    
+    # tissue filter
+    sel_t <- input$tissue_select_raincloud
+    if (!is.null(sel_t) && !"All Tissues" %in% sel_t) {
+      df <- dplyr::filter(df, Tissue %in% sel_t)
+    }
+    
+    # search SNP IDs
+    if (!is.null(selected_snps())) {
+      df <- dplyr::filter(df, ID %in% selected_snps())
+    } else {
+      ids <- strsplit(input$raincloud_searched_snp, ",\\s*")[[1]]
+      if (length(ids) && nzchar(ids[1])) {
+        df <- dplyr::filter(df, ID %in% ids)
+      }
+    }
+    
+    # top N SNPs by AE
+    topN <- df %>%
+      dplyr::group_by(ID) %>%
+      dplyr::summarise(ae = mean(AE, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::arrange(dplyr::desc(ae)) %>%
+      head(input$top_n_raincloud) %>%
+      dplyr::pull(ID)
+    
+    dplyr::filter(df, ID %in% topN)
   })
   
-  
-  ## ——— 3) The unified raincloud‐plot function ————————————————————————
+  # 4) Raincloud plotting function (always x = 1) ------------------------------
   make_raincloud_plot <- function(data,
-                                  yvar,
                                   show_mean_line,
                                   show_points,
                                   facet_by_tissue = FALSE) {
-    # Deduplicate
-    data <- dplyr::distinct(data)
     
-    # Base ggplot
+    # base
     p <- ggplot2::ggplot(
       data,
-      ggplot2::aes_string(
-        x = if (facet_by_tissue) "Tissue" else "1",
-        y = yvar
-      )
+      ggplot2::aes(x = 1, y = AE)
     )
     
-    # Add interactive points (horizontal jitter small, vertical jitter tiny)
+    # points
     if (show_points) {
-      idvar   <- if (yvar == "mean.s") "Gene" else "ID"
-      tooltip <- if (yvar == "mean.s") {
-        "paste0('Gene: ', Gene, '<br>Mean effect: ', round(mean.s, 3))"
-      } else {
-        "paste0('SNP: ', ID, '<br>AE: ', round(AE, 3))"
-      }
-      p <- p + ggiraph::geom_point_interactive(
-        ggplot2::aes_string(
-          x       = "0.87",
-          color   = idvar,
-          tooltip = tooltip,
-          data_id = idvar
-        ),
-        position = ggplot2::position_jitter(width = 0.02, height = 0.03),
-        shape    = 16,
-        alpha    = 0.7,
-        size     = 2
-      )
+      p <- p +
+        ggiraph::geom_point_interactive(
+          ggplot2::aes_string(
+            tooltip = "paste0('SNP: ', ID, '<br>AE: ', round(AE,3))",
+            data_id = "ID"
+          ),
+          position = ggplot2::position_jitter(width = 0.02, height = 0.0),
+          shape    = 16, alpha = 0.7, size = 2
+        )
     }
     
-    # Half-violin (if enough points)
+    # half-violin
     if (nrow(data) > 2) {
       p <- p + gghalves::geom_half_violin(
         side   = "r",
@@ -3623,7 +3638,7 @@ server <- function(input, output, session) {
       )
     }
     
-    # Boxplot
+    # boxplot
     p <- p + ggplot2::geom_boxplot(
       width         = 0.1,
       outlier.shape = NA,
@@ -3631,7 +3646,7 @@ server <- function(input, output, session) {
       color         = "black"
     )
     
-    # Optional mean line
+    # mean line
     if (show_mean_line) {
       p <- p + ggplot2::stat_summary(
         fun   = mean,
@@ -3641,17 +3656,14 @@ server <- function(input, output, session) {
       )
     }
     
-    # Flip coordinates, theme, labels
+    # flip + theme
     p <- p +
       ggplot2::coord_flip() +
       ggplot2::theme_minimal(base_size = 14) +
       ggplot2::labs(
         x     = NULL,
-        y     = if (yvar == "mean.s") "Mean Effect" else "AE",
-        title = if (yvar == "mean.s")
-          "Raincloud Plot: Gene ASE (mean effect)"
-        else
-          "Raincloud Plot: SNP ASE (AE)"
+        y     = "AE",
+        title = "Raincloud Plot: SNP ASE (AE)"
       ) +
       ggplot2::theme(
         axis.ticks.y    = ggplot2::element_blank(),
@@ -3659,90 +3671,27 @@ server <- function(input, output, session) {
         legend.position = "none"
       )
     
-    # Facet by tissue if requested
+    # facet by tissue
     if (facet_by_tissue) {
       p <- p + ggplot2::facet_wrap(~ Tissue, scales = "free", ncol = 1)
     }
     
-    # Return interactive ggiraph object
-    ggiraph::girafe(
-      ggobj     = p,
-      width_svg = 8,
-      height_svg= 6
-    )
+    # return interactive plot
+    ggiraph::girafe(ggobj = p, width_svg = 8, height_svg = 6)
   }
   
-  # 4) Reactive selection of gene vs snp data --------------------------------
-  
-  ## 4) Reactive dataset with proper Tissue & search filtering ####
-  filtered_data_raincloud <- shiny::reactive({
-    # pick the right dataframe
-    df <- if (input$raincloud_data_type == "gene") {
-      gene_ase_df() %>% dplyr::filter(fdr <= input$pval_cutoff)
-    } else {
-      snp_ase_df()  %>% dplyr::filter(FDR <= input$pval_cutoff)
-    }
-    
-    # tissue filter
-    sel_t <- input$tissue_select_raincloud
-    if (!is.null(sel_t) && !"All Tissues" %in% sel_t) {
-      df <- df %>% dplyr::filter(Tissue %in% sel_t)
-    }
-    
-    # SEARCH: priority to random selection, else textInput
-    if (input$raincloud_data_type == "gene") {
-      
-      if (!is.null(selected_genes())) {
-        df <- df %>% dplyr::filter(Gene %in% selected_genes())
-      } else {
-        genes <- strsplit(input$raincloud_searched_gene, ",\\s*")[[1]]
-        if (length(genes) && nzchar(genes[1])) {
-          df <- df %>% dplyr::filter(Gene %in% genes)
-        }
-      }
-      # top N genes by mean effect
-      topN <- df %>%
-        dplyr::group_by(Gene) %>%
-        dplyr::summarise(m = mean(score, na.rm = TRUE), .groups = "drop") %>%
-        dplyr::arrange(dplyr::desc(m)) %>%
-        head(input$top_n_raincloud) %>%
-        dplyr::pull(Gene)
-      df <- df %>% dplyr::filter(Gene %in% topN)
-      
-    } else {
-      
-      if (!is.null(selected_snps())) {
-        df <- df %>% dplyr::filter(ID %in% selected_snps())
-      } else {
-        ids <- strsplit(input$raincloud_searched_snp, ",\\s*")[[1]]
-        if (length(ids) && nzchar(ids[1])) {
-          df <- df %>% dplyr::filter(ID %in% ids)
-        }
-      }
-      # top N SNPs by AE
-      topN <- df %>%
-        dplyr::group_by(ID) %>%
-        dplyr::summarise(ae = mean(AE, na.rm = TRUE), .groups = "drop") %>%
-        dplyr::arrange(dplyr::desc(ae)) %>%
-        head(input$top_n_raincloud) %>%
-        dplyr::pull(ID)
-      df <- df %>% dplyr::filter(ID %in% topN)
-      
-    }
-    df
+  # 5) Render + download -------------------------------------------------------
+  output$raincloud_title <- shiny::renderText({
+    paste0("Raincloud Plot — showing ",
+           nrow(filtered_data_raincloud()), " SNPs")
   })
-  
-  # 5) Render, download & grab selections -----------------------------------
   
   output$raincloud_plot <- ggiraph::renderGirafe({
     df    <- filtered_data_raincloud()
     shiny::req(nrow(df) > 0)
     facet <- !"All Tissues" %in% input$tissue_select_raincloud
-    yvar  <- if (input$raincloud_data_type == "gene") "mean.s" else "AE"
-    
     make_raincloud_plot(
       data            = df,
-      yvar            = yvar,
       show_mean_line  = input$show_mean_line,
       show_points     = input$show_points,
       facet_by_tissue = facet
@@ -3750,36 +3699,56 @@ server <- function(input, output, session) {
   })
   
   output$download_raincloud_plot <- shiny::downloadHandler(
-    filename = function()   "raincloud.png",
+    filename = function() "raincloud.png",
     content  = function(file) {
-      df    <- filtered_data_raincloud()
-      facet <- !("All Tissues" %in% input$tissue_select_raincloud)
-      yvar  <- if (input$raincloud_data_type=="gene") "score" else "AE"
-      p     <- make_static_raincloud_plot(df, yvar, input$show_mean_line, input$show_points, facet)
-      ggplot2::ggsave(file, plot = p, width = 10, height = 6)
+      # save a static ggplot first
+      static_p <- ggplot2::ggplot(
+        filtered_data_raincloud(),
+        ggplot2::aes(x = 1, y = AE)
+      ) +
+        # … repeat exactly the layers above, but without the ggiraph() wrapper …
+        ggplot2::geom_half_violin(
+          data = filtered_data_raincloud(),
+          ggplot2::aes(x = 1, y = AE),
+          side   = "r", trim = FALSE,
+          fill   = "grey", alpha = 0.6, color = "black"
+        ) +
+        ggplot2::geom_boxplot(
+          width = 0.1, outlier.shape = NA, alpha = 0.6, color = "black"
+        ) +
+        { if (input$show_mean_line)
+          ggplot2::stat_summary(
+            fun = mean, geom = "crossbar", width = 0.075, color = "red"
+          )
+        } +
+        ggplot2::coord_flip() +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::labs(x = NULL, y = "AE", title = "Raincloud Plot: SNP ASE (AE)") +
+        ggplot2::theme(
+          axis.ticks.y = ggplot2::element_blank(),
+          plot.title   = ggplot2::element_text(hjust = 0.5),
+          legend.position = "none"
+        ) +
+        { if (!("All Tissues" %in% input$tissue_select_raincloud))
+          ggplot2::facet_wrap(~ Tissue, scales = "free", ncol = 1)
+        }
+      
+      ggplot2::ggsave(file, static_p, width = 10, height = 6, dpi = 300)
     }
   )
   
-  ## only grab when in gene‐ASE mode:
-  shiny::observeEvent(input$grab_selected_raincloud, {
-    req(input$raincloud_data_type == "gene")
-    sel <- input$raincloud_plot_selected
-    if (length(sel)) {
-      request_add_genes(sel)
-      shiny::showNotification(paste(length(sel), "genes grabbed"), type="message")
+  # 6) Grab displayed SNPs -----------------------------------------------------
+  shiny::observeEvent(input$grab_displayed_raincloud, {
+    df  <- filtered_data_raincloud()
+    ids <- unique(df$ID)
+    if (length(ids)) {
+      request_add_genes(ids)
+      shiny::showNotification(
+        paste(length(ids), "SNPs added to gene‐cart"), type = "message"
+      )
     }
   })
   
-  ## and same for “Grab All Displayed”:
-  shiny::observeEvent(input$grab_displayed_raincloud, {
-    req(input$raincloud_data_type == "gene")
-    df  <- filtered_data_raincloud()
-    ids <- unique(df$Gene)
-    if (length(ids)) {
-      request_add_genes(ids)
-      shiny::showNotification(paste(length(ids), "genes added"), type="message")
-    }
-  })
   
   
   
